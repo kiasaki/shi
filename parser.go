@@ -31,7 +31,7 @@ func LexerAST(l *Lexer, values []Value, state ReadState) []Value {
 			}
 			values = append(values, NewFloat(v))
 		case TokenStringLiteral:
-			v, err := strconv.Unquote("\"" + token.Value + "\"")
+			v, err := strconv.Unquote(token.Value)
 			if err != nil {
 				panic(err)
 			}

@@ -1,9 +1,6 @@
 package main
 
-import (
-	"fmt"
-	"strconv"
-)
+import "strconv"
 
 type Value interface {
 	Eval(env Environment) Value
@@ -83,7 +80,7 @@ func (s *String) Eval(env Environment) Value {
 }
 
 func (s *String) String() string {
-	return fmt.Sprintf("\"%s\"", strconv.Quote(s.value))
+	return strconv.Quote(s.value)
 }
 
 // Cell
