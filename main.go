@@ -5,37 +5,42 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"strings"
 )
 
 const ShiVersion = "0.1.0"
 
+func StringArrayToList(vs []string) Value {
+	list := []Value{}
+	for _, v := range vs {
+		list = append(list, NewString(v))
+	}
+	return NewCell(list)
+}
+
 func main() {
+	shiPaths := strings.Split(os.Getenv("SHI_PATH"), ":")
+	if len(shiPaths) == 0 {
+		shiPaths = []string{".", "/usr/share/shi"}
+	}
+
 	env := NewRootEnvironment()
-	LoadPrelude(env)
+	env.Set("*version*", NewString(ShiVersion))
+	env.Set("*args*", StringArrayToList(os.Args))
+	env.Set("*shi-path*", StringArrayToList(shiPaths))
+
+	builtinLoad(env, []Value{NewString("shi::core")})
 
 	if len(os.Args) > 1 {
 		for _, arg := range os.Args[1:] {
-			runFile(env, arg)
+			ParseFile(arg).Eval(env)
 		}
-	}
-	if stat, err := os.Stdin.Stat(); err == nil && stat.Size() > 0 {
+	} else if stat, err := os.Stdin.Stat(); err == nil && stat.Size() > 0 {
 		run(env, "stdin", os.Stdin)
 	} else {
-		shiRoot := os.Getenv("SHI_ROOT")
-		if shiRoot == "" {
-			shiRoot = "."
-		}
-		runFile(env, shiRoot+"/shi/repl.shi")
+		builtinLoad(env, []Value{NewString("shi::repl")})
+		Parse("repl", "(repl-run)")[0].Eval(env)
 	}
-}
-
-func runFile(env *Environment, name string) {
-	file, err := os.Open(name)
-	if err != nil {
-		fmt.Printf("error: %s\n", err)
-		os.Exit(1)
-	}
-	run(env, name, file)
 }
 
 func run(env *Environment, name string, input io.ReadWriteCloser) {

@@ -9,3 +9,5 @@
 (set ll (fn (& y) y))
 
 (write *stdout* (str (print-str (ll 2 7)) "\n"))
+
+(println *args*)

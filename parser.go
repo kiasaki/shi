@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"strconv"
 )
 
@@ -91,6 +94,31 @@ func LexerAST(l *Lexer, values []Value, state ReadState) []Value {
 
 func Parse(name string, input string) []Value {
 	l := NewLexer(name, input)
-	root := LexerAST(l, []Value{}, ReadStateRoot)
-	return root
+	return LexerAST(l, []Value{}, ReadStateRoot)
+}
+
+func ParseFile(name string) Value {
+	absPath, err := filepath.Abs(name)
+	if err != nil {
+		panic(fmt.Sprintf("error: %s\n", err))
+	}
+
+	file, err := os.Open(absPath)
+	if err != nil {
+		panic(fmt.Sprintf("error: %s\n", err))
+	}
+
+	contents, err := ioutil.ReadAll(file)
+	if err != nil {
+		panic(fmt.Sprintf("error: %s\n", err))
+	}
+	file.Close()
+
+	topLevel := Parse(filepath.Base(absPath), string(contents))
+
+	return NewCell(append([]Value{
+		NewSym("do"),
+		NewCell([]Value{NewSym("set"), NewSym("*filename*"), NewString(filepath.Base(absPath))}),
+		NewCell([]Value{NewSym("set"), NewSym("*dirname*"), NewString(filepath.Dir(absPath))}),
+	}, topLevel...))
 }

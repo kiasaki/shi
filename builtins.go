@@ -5,6 +5,8 @@ import (
 	"io"
 	"math"
 	"os"
+	"path/filepath"
+	"strings"
 )
 
 func AddBuiltin(env *Environment, name string, fn func(*Environment, []Value) Value) {
@@ -22,6 +24,7 @@ func AddBuiltins(env *Environment) {
 	AddBuiltinSpecial(env, "fn", builtinFn)
 	AddBuiltinSpecial(env, "apply", builtinApply)
 	AddBuiltin(env, "do", builtinDo)
+
 	AddBuiltin(env, "error", builtinError)
 	AddBuiltin(env, "trap-error", builtinTrapError)
 
@@ -29,16 +32,18 @@ func AddBuiltins(env *Environment) {
 	AddBuiltin(env, "root-environment", builtinRootEnvironment)
 	AddBuiltinSpecial(env, "eval", builtinEval)
 	AddBuiltin(env, "parse", builtinParse)
+	AddBuiltin(env, "parse-file", builtinParseFile)
+	AddBuiltin(env, "load", builtinLoad)
 
-	env.Set(builtinValStr.Name, builtinValStr)
-	env.Set(builtinValStrJoin.Name, builtinValStrJoin)
+	AddBuiltin(env, "str", builtinStr)
+	AddBuiltin(env, "str-join", builtinStrJoin)
 
 	AddBuiltin(env, "+", builtinPlus)
 	AddBuiltin(env, "-", builtinMinus)
 	AddBuiltin(env, "/", builtinQuotient)
 	AddBuiltin(env, "*", builtinProduct)
 
-	env.Set(builtinValList.Name, builtinValList)
+	AddBuiltin(env, "list", builtinList)
 
 	AddBuiltin(env, "write", builtinWrite)
 	AddBuiltin(env, "read-line", builtinReadLine)
@@ -47,7 +52,6 @@ func AddBuiltins(env *Environment) {
 	env.Set("*stdin*", NewStream(os.Stdin))
 	env.Set("*stdout*", NewStream(os.Stdout))
 	env.Set("*stderr*", NewStream(os.Stderr))
-	env.Set("*version*", NewString(ShiVersion))
 }
 
 // Language
@@ -87,6 +91,9 @@ func builtinDo(env *Environment, vals []Value) Value {
 		return vals[len(vals)-1]
 	}
 }
+
+// Error
+// =======================
 
 func builtinError(env *Environment, vals []Value) Value {
 	AssetArgsSize(vals, 1, 1)
@@ -149,6 +156,50 @@ func builtinParse(env *Environment, vals []Value) Value {
 	}
 }
 
+func builtinParseFile(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 1, 1)
+	AssetArgType(vals[0], "string")
+
+	return ParseFile(string(vals[0].(String)))
+}
+
+func builtinLoad(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 1, 1)
+	AssetArgType(vals[0], "string")
+
+	targetFile := string(vals[0].(String))
+
+	if len(targetFile) == 0 {
+		// No file could match, error
+		panic("load: emply module or file name given")
+	}
+	if targetFile[0] == '.' {
+		// Relative file
+		ParseFile(targetFile).Eval(env)
+	}
+
+	// Look for module in *shi-path* folders
+	shiPathsVal := env.Get("*shi-path*")
+	if shiPathsVal.Type() == "cell" {
+		panic("load: expected '*shi-path*' to be a string list")
+	}
+	shiPaths := shiPathsVal.(*Cell).Values
+
+	for _, p := range shiPaths {
+		targetModule := strings.Replace(targetFile, "::", string(os.PathSeparator), -1)
+		fullPath := filepath.Join(string(p.(String)), targetModule, filepath.Base(targetModule)+".shi")
+		_, err := os.Stat(fullPath)
+		if !os.IsNotExist(err) {
+			ParseFile(fullPath).Eval(env)
+			return NULL
+		} else {
+			panic(fmt.Sprintf("load: stat: %v", err))
+		}
+	}
+
+	panic(fmt.Sprintf("load: could not find module or file '%s'", targetFile))
+}
+
 // String
 // =======================
 
@@ -156,8 +207,6 @@ func builtinStr(env *Environment, vals []Value) Value {
 	AssetArgListType(NewCell(vals), "string")
 	return builtinStrJoin(env, []Value{NewString(""), NewCell(vals)})
 }
-
-var builtinValStr = NewBuiltin("str", BuiltinFn(builtinStr)).(*Builtin)
 
 func builtinStrJoin(env *Environment, vals []Value) Value {
 	AssetArgType(vals[0], "string")
@@ -173,8 +222,6 @@ func builtinStrJoin(env *Environment, vals []Value) Value {
 	}
 	return NewString(str)
 }
-
-var builtinValStrJoin = NewBuiltin("str-join", BuiltinFn(builtinStrJoin)).(*Builtin)
 
 // Numbers
 // =======================
@@ -231,8 +278,6 @@ var builtinProduct = buildBuiltinOp(func(a, b float64) float64 {
 func builtinList(env *Environment, vals []Value) Value {
 	return NewCell(vals)
 }
-
-var builtinValList = NewBuiltin("list", BuiltinFn(builtinList)).(*Builtin)
 
 // Streams & I/O
 // =======================
