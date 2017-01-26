@@ -1,0 +1,16 @@
+(write *out* (str "Shi Lisp v" *version* " REPL\n"))
+
+(set env (root-environment))
+
+(set repl (fn ()
+  (write *out* "> ")
+
+  (trap-error
+    (fn ()
+      (println (eval env (parse "repl" (read-line *stdin*)))))
+    (fn (e)
+      (write *out* e)))
+
+  (repl)))
+
+(repl)

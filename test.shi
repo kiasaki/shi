@@ -5,3 +5,7 @@
 "as\na"
 
 1.4523
+
+(set ll (fn (& y) y))
+
+(write *stdout* (str (print-str (ll 2 7)) "\n"))
