@@ -20,6 +20,7 @@ func AddBuiltinSpecial(env *Environment, name string, fn func(*Environment, []Va
 }
 
 func AddBuiltins(env *Environment) {
+	AddBuiltinSpecial(env, "type", builtinType)
 	AddBuiltinSpecial(env, "quote", builtinQuote)
 	AddBuiltinSpecial(env, "fn", builtinFn)
 	AddBuiltinSpecial(env, "apply", builtinApply)
@@ -28,12 +29,17 @@ func AddBuiltins(env *Environment) {
 	AddBuiltin(env, "error", builtinError)
 	AddBuiltin(env, "trap-error", builtinTrapError)
 
-	AddBuiltinSpecial(env, "set", builtinSet)
+	AddBuiltin(env, "environment", builtinEnvironment)
 	AddBuiltin(env, "root-environment", builtinRootEnvironment)
+	AddBuiltinSpecial(env, "environment-set", builtinEnvironmentSet)
+	AddBuiltinSpecial(env, "environment-get", builtinEnvironmentGet)
+	AddBuiltin(env, "environment-root", builtinEnvironmentRoot)
 	AddBuiltinSpecial(env, "eval", builtinEval)
 	AddBuiltin(env, "parse", builtinParse)
 	AddBuiltin(env, "parse-file", builtinParseFile)
 	AddBuiltin(env, "load", builtinLoad)
+
+	AddBuiltin(env, "sym", builtinSym)
 
 	AddBuiltin(env, "str", builtinStr)
 	AddBuiltin(env, "str-join", builtinStrJoin)
@@ -56,6 +62,12 @@ func AddBuiltins(env *Environment) {
 
 // Language
 // =======================
+
+func builtinType(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 1, 1)
+
+	return NewString(vals[0].Type())
+}
 
 func builtinQuote(env *Environment, vals []Value) Value {
 	AssetArgsSize(vals, 1, 1)
@@ -119,17 +131,66 @@ func builtinTrapError(env *Environment, vals []Value) (ret Value) {
 // Environment
 // =======================
 
-func builtinSet(env *Environment, vals []Value) Value {
-	AssetArgsSize(vals, 2, 2)
-	AssetArgType(vals[0], "symbol")
+func builtinEnvironment(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 1, 1)
+	AssetArgType(vals[0], "environment")
 
-	valueToSet := FullEval(env, vals[1])
-	env.Set(vals[0].String(), valueToSet)
-	return valueToSet
+	return NewEnvironment(vals[0].(*Environment))
 }
 
 func builtinRootEnvironment(env *Environment, vals []Value) Value {
 	return NewRootEnvironment()
+}
+
+func builtinEnvironmentSet(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 2, 3)
+
+	var e = env
+	var k = vals[0]
+	var v = vals[1]
+
+	if len(vals) == 3 {
+		givenEnv := vals[0].Eval(env)
+		AssetArgType(givenEnv, "environment")
+		e = givenEnv.(*Environment)
+		k = vals[1]
+		v = vals[2]
+	}
+	AssetArgType(k, "symbol")
+
+	valueToSet := FullEval(env, v)
+	e.Set(k.String(), valueToSet)
+	return valueToSet
+}
+
+func builtinEnvironmentGet(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 1, 2)
+
+	var e = env
+	var k Value
+
+	if len(vals) > 0 && vals[0].Type() == "environment" {
+		e = vals[0].(*Environment)
+		AssetArgsSize(vals, 2, 2)
+		AssetArgType(vals[1], "symbol")
+		k = vals[1]
+	} else {
+		AssetArgsSize(vals, 1, 1)
+		AssetArgType(vals[0], "symbol")
+		k = vals[0]
+	}
+
+	return e.Get(k.String())
+}
+
+func builtinEnvironmentRoot(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 0, 1)
+	e := env
+	if len(vals) > 0 && vals[0].Type() == "environment" {
+		e = vals[0].(*Environment)
+	}
+
+	return e.Root()
 }
 
 func builtinEval(env *Environment, vals []Value) Value {
@@ -142,11 +203,18 @@ func builtinEval(env *Environment, vals []Value) Value {
 }
 
 func builtinParse(env *Environment, vals []Value) Value {
-	AssetArgsSize(vals, 2, 2)
-	AssetArgType(vals[0], "string")
-	AssetArgType(vals[1], "string")
+	AssetArgsSize(vals, 1, 2)
 
-	topLevel := Parse(string(vals[0].(String)), string(vals[1].(String)))
+	name := NewString("unknown")
+	contents := vals[0]
+	if len(vals) == 2 {
+		name = vals[0]
+		contents = vals[1]
+	}
+	AssetArgType(name, "string")
+	AssetArgType(contents, "string")
+
+	topLevel := Parse(string(name.(String)), string(name.(String)))
 
 	if len(topLevel) == 1 {
 		return topLevel[0]
@@ -163,11 +231,36 @@ func builtinParseFile(env *Environment, vals []Value) Value {
 	return ParseFile(string(vals[0].(String)))
 }
 
+func builtinLoadHelper(env *Environment, file string) bool {
+	targetFile := file
+	if len(targetFile) < 4 || targetFile[len(targetFile)-4:] != ".shi" {
+		// Ensure extension is present
+		targetFile = targetFile + ".shi"
+	}
+
+	targetModule := filepath.Join(file, filepath.Base(targetFile))
+
+	if _, err := os.Stat(targetFile); err == nil {
+		// Try file
+		ParseFile(targetFile).Eval(env)
+		return true
+	} else if _, err := os.Stat(targetModule); err == nil {
+		// Try module
+		ParseFile(targetModule).Eval(env)
+		return true
+	}
+	return false
+}
+
 func builtinLoad(env *Environment, vals []Value) Value {
 	AssetArgsSize(vals, 1, 1)
-	AssetArgType(vals[0], "string")
+	targetFileVal := vals[0]
+	if targetFileVal.Type() == "symbol" {
+		targetFileVal = NewString(targetFileVal.String())
+	}
+	AssetArgType(targetFileVal, "string")
 
-	targetFile := string(vals[0].(String))
+	targetFile := string(targetFileVal.(String))
 
 	if len(targetFile) == 0 {
 		// No file could match, error
@@ -175,8 +268,11 @@ func builtinLoad(env *Environment, vals []Value) Value {
 	}
 	if targetFile[0] == '.' {
 		// Relative file
-		ParseFile(targetFile).Eval(env)
-		return NULL
+		if builtinLoadHelper(env, targetFile) {
+			return NULL
+		} else {
+			panic(fmt.Sprintf("load: could not find file '%s'", targetFile))
+		}
 	}
 
 	// Look for module in *shi-path* folders
@@ -185,20 +281,25 @@ func builtinLoad(env *Environment, vals []Value) Value {
 		panic("load: expected '*shi-path*' to be a string list")
 	}
 	shiPaths := shiPathsVal.(*Cell).Values
+	targetModule := strings.Replace(targetFile, "::", string(os.PathSeparator), -1)
 
 	for _, p := range shiPaths {
-		targetModule := strings.Replace(targetFile, "::", string(os.PathSeparator), -1)
-		fullPath := filepath.Join(string(p.(String)), targetModule, filepath.Base(targetModule)+".shi")
-		_, err := os.Stat(fullPath)
-		if !os.IsNotExist(err) {
-			ParseFile(fullPath).Eval(env)
+		if builtinLoadHelper(env, filepath.Join(string(p.(String)), targetModule)) {
 			return NULL
-		} else {
-			panic(fmt.Sprintf("load: stat: %v", err))
 		}
 	}
 
-	panic(fmt.Sprintf("load: could not find module or file '%s'", targetFile))
+	panic(fmt.Sprintf("load: could not find module '%s'", targetFile))
+}
+
+// Symbol
+// =======================
+
+func builtinSym(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 1, 1)
+	AssetArgType(vals[0], "string")
+
+	return NewSym(string(vals[0].(String)))
 }
 
 // String
@@ -210,6 +311,7 @@ func builtinStr(env *Environment, vals []Value) Value {
 }
 
 func builtinStrJoin(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 2, 2)
 	AssetArgType(vals[0], "string")
 	AssetArgType(vals[1], "list")
 	AssetArgListType(vals[1], "string")

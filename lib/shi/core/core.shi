@@ -1,0 +1,6 @@
+(load shi::core::environment)
+(load shi::core::list)
+(load shi::core::vector)
+(load shi::core::string)
+(load shi::core::io)
+

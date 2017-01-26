@@ -20,8 +20,8 @@ func StringArrayToList(vs []string) Value {
 
 func main() {
 	shiPaths := strings.Split(os.Getenv("SHI_PATH"), ":")
-	if len(shiPaths) == 0 {
-		shiPaths = []string{".", "/usr/share/shi"}
+	if len(shiPaths) == 1 && shiPaths[0] == "" {
+		shiPaths = []string{".", "./lib", "/usr/share/shi"}
 	}
 
 	env := NewRootEnvironment()

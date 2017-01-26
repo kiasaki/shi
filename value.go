@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 )
 
@@ -149,6 +150,9 @@ func NewCell(values []Value) Value {
 }
 
 func (v *Cell) Eval(env *Environment) Value {
+	if os.Getenv("DEBUG") != "" {
+		fmt.Fprintf(os.Stderr, "debug: eval: %s\n", v)
+	}
 	if len(v.Values) == 0 {
 		return v
 	}
@@ -158,7 +162,7 @@ func (v *Cell) Eval(env *Environment) Value {
 		name := head.String()
 		head = env.Get(name)
 		if head.Type() == "null" {
-			panic(fmt.Sprintf("trying to call unbound symbol '%s'", name))
+			panic(fmt.Sprintf("trying to call unbound symbol '%s' in '%s'", name, v))
 		}
 	}
 

@@ -32,6 +32,17 @@ func (v *Environment) String() string {
 	return fmt.Sprintf("#<environment %p>", v)
 }
 
+func (e *Environment) Root() *Environment {
+	node := e
+	for i := 0; i < 10000; i++ { // make sure we are never stuck here and panic
+		if node.parent == nil {
+			return node
+		}
+		node = node.parent
+	}
+	panic("env: root: unreachable")
+}
+
 func (e *Environment) Get(k string) Value {
 	if v, ok := e.values[k]; ok {
 		return v

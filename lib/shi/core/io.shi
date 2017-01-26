@@ -1,3 +1,4 @@
+(set *in* *stdin*)
 (set *out* *stdout*)
 
 (set print (fn (& v)

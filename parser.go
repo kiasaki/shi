@@ -118,7 +118,7 @@ func ParseFile(name string) Value {
 
 	return NewCell(append([]Value{
 		NewSym("do"),
-		NewCell([]Value{NewSym("set"), NewSym("*filename*"), NewString(filepath.Base(absPath))}),
-		NewCell([]Value{NewSym("set"), NewSym("*dirname*"), NewString(filepath.Dir(absPath))}),
+		NewCell([]Value{NewSym("environment-set"), NewSym("*filename*"), NewString(filepath.Base(absPath))}),
+		NewCell([]Value{NewSym("environment-set"), NewSym("*dirname*"), NewString(filepath.Dir(absPath))}),
 	}, topLevel...))
 }
