@@ -1,16 +1,18 @@
-package main
+package shi
 
 import (
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 )
 
 type Value interface {
-	Eval(env *Environment) Value
 	Type() string
 	String() string
+}
+
+type Callable interface {
+	Call(*Environment, []Value) Value
 }
 
 // Sym
@@ -22,10 +24,6 @@ type Sym struct {
 
 func NewSym(name string) Value {
 	return &Sym{Name: name}
-}
-
-func (v *Sym) Eval(env *Environment) Value {
-	return v
 }
 
 func (v *Sym) Type() string {
@@ -43,10 +41,6 @@ type Null struct{}
 
 var NULL = Null{}
 
-func (v Null) Eval(env *Environment) Value {
-	return v
-}
-
 func (v Null) Type() string {
 	return "null"
 }
@@ -63,10 +57,6 @@ type Bool bool
 var TRUE = Bool(true)
 var FALSE = Bool(false)
 
-func (v Bool) Eval(env *Environment) Value {
-	return v
-}
-
 func (v Bool) Type() string {
 	return "boolean"
 }
@@ -82,10 +72,6 @@ type String string
 
 func NewString(value string) Value {
 	return String(value)
-}
-
-func (v String) Eval(env *Environment) Value {
-	return v
 }
 
 func (v String) Type() string {
@@ -105,10 +91,6 @@ func NewInt(value int64) Value {
 	return Int(value)
 }
 
-func (v Int) Eval(env *Environment) Value {
-	return v
-}
-
 func (v Int) Type() string {
 	return "integer"
 }
@@ -124,10 +106,6 @@ type Float float64
 
 func NewFloat(value float64) Value {
 	return Float(value)
-}
-
-func (v Float) Eval(env *Environment) Value {
-	return v
 }
 
 func (v Float) Type() string {
@@ -147,33 +125,6 @@ type Cell struct {
 
 func NewCell(values []Value) Value {
 	return &Cell{Values: values}
-}
-
-func (v *Cell) Eval(env *Environment) Value {
-	if os.Getenv("DEBUG") != "" {
-		fmt.Fprintf(os.Stderr, "debug: eval: %s\n", v)
-	}
-	if len(v.Values) == 0 {
-		return v
-	}
-
-	head := v.Values[0]
-	if head.Type() == "symbol" {
-		name := head.String()
-		head = env.Get(name)
-		if head.Type() == "null" {
-			panic(fmt.Sprintf("trying to call unbound symbol '%s' in '%s'", name, v))
-		}
-	}
-
-	switch head.Type() {
-	case "builtin":
-		return head.(*Builtin).Apply(env, v.Values[1:])
-	case "closure":
-		return head.(*Closure).Apply(env, v.Values[1:])
-	default:
-		panic(fmt.Sprintf("trying to call non-callable value `%s'", head.String()))
-	}
 }
 
 func (v Cell) Type() string {
@@ -208,10 +159,6 @@ func (v *Stream) Write(bs []byte) {
 	}
 }
 
-func (v *Stream) Eval(env *Environment) Value {
-	return v
-}
-
 func (v *Stream) Type() string {
 	return "stream"
 }
@@ -234,7 +181,7 @@ func NewBuiltin(name string, fn BuiltinFn) Value {
 	return &Builtin{Name: name, Fn: fn, IsSpecial: false}
 }
 
-func (v *Builtin) Apply(env *Environment, args []Value) Value {
+func (v *Builtin) Call(env *Environment, args []Value) Value {
 	if v.IsSpecial {
 		return (v.Fn)(env, args)
 	} else {
@@ -244,10 +191,6 @@ func (v *Builtin) Apply(env *Environment, args []Value) Value {
 		}
 		return (v.Fn)(env, evaluatedArgs)
 	}
-}
-
-func (v *Builtin) Eval(env *Environment) Value {
-	return v
 }
 
 func (v *Builtin) Type() string {
@@ -271,49 +214,17 @@ func NewClosure(env *Environment, argNames []string, body []Value) Value {
 	return &Closure{Env: env, ArgNames: argNames, Body: body}
 }
 
-func (v *Closure) Apply(env *Environment, args []Value) Value {
+func (v *Closure) Call(env *Environment, args []Value) Value {
 	evalEnv := NewEnvironment(v.Env)
+	argNamesLeft := buildCallEnv(true, evalEnv, env, v.ArgNames, args)
 
-	rest := ""
-	restValues := []Value{}
-	argNames := v.ArgNames
-
-	for _, arg := range args {
-		if len(argNames) == 0 && rest == "" {
-			panic(fmt.Sprintf(
-				"function called with too many arguments: wanted %v, got %v. Args: %v",
-				len(v.ArgNames), len(args), NewCell(args),
-			))
-		} else if rest != "" {
-			restValues = append(restValues, FullEval(env, arg))
-		} else if argNames[0] == "&" {
-			if len(argNames) != 2 {
-				panic(fmt.Sprintf("found illegal '&' in argument list: %s", NewCell(args)))
-			}
-			rest = argNames[1]
-			argNames = []string{}
-			restValues = append(restValues, FullEval(env, arg))
-		} else {
-			evalEnv.Set(argNames[0], FullEval(env, arg))
-			argNames = argNames[1:]
-		}
-	}
-
-	if rest != "" {
-		evalEnv.Set(rest, NewCell(restValues))
-	}
-
-	if len(argNames) == 0 {
+	if len(argNamesLeft) == 0 {
 		// Are we done filling required args? Then apply function
-		return NewCell(append([]Value{NewSym("do")}, v.Body...)).Eval(evalEnv)
+		return Eval(evalEnv, NewCell(append([]Value{NewSym("do")}, v.Body...)))
 	} else {
 		// Create a new closure for the partially applied function
-		return NewClosure(evalEnv, argNames, v.Body)
+		return NewClosure(evalEnv, argNamesLeft, v.Body)
 	}
-}
-
-func (v *Closure) Eval(env *Environment) Value {
-	return v
 }
 
 func (v *Closure) Type() string {
@@ -322,4 +233,39 @@ func (v *Closure) Type() string {
 
 func (v *Closure) String() string {
 	return fmt.Sprintf("#<closure %p>", v)
+}
+
+// Macro
+// =======================
+
+type Macro struct {
+	ArgNames []string
+	Body     []Value
+}
+
+func NewMacro(argNames []string, body []Value) Value {
+	return &Macro{ArgNames: argNames, Body: body}
+}
+
+func (v *Macro) Call(env *Environment, args []Value) Value {
+	evalEnv := NewEnvironment(env)
+	argNamesLeft := buildCallEnv(false, evalEnv, env, v.ArgNames, args)
+
+	if len(argNamesLeft) > 0 {
+		panic(fmt.Sprintf("macro called without all arguments, wanted '%s', got '%s'", v.ArgNames, args))
+	}
+
+	var result Value = NULL
+	for _, expr := range v.Body {
+		result = Eval(evalEnv, expr)
+	}
+	return result
+}
+
+func (v *Macro) Type() string {
+	return "macro"
+}
+
+func (v *Macro) String() string {
+	return fmt.Sprintf("#<macro %p %v>", v, v.ArgNames)
 }

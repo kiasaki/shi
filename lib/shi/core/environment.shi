@@ -1,5 +1,5 @@
-(environment-set (environment-root) set-global (fn (k v)
-  (environment-set (environment-root) k v)))
+;(environment-set (environment-root) set-global (fn (k v)
+;  (environment-set (environment-root) k v)))
 
-(set-global set environment-set)
-(set-global value environment-get)
+(environment-set set environment-set)
+(environment-set value environment-get)

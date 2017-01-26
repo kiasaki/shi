@@ -6,6 +6,8 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
+
+	. "github.com/kiasaki/shi"
 )
 
 const ShiVersion = "0.1.0"
@@ -29,17 +31,17 @@ func main() {
 	env.Set("*args*", StringArrayToList(os.Args))
 	env.Set("*shi-path*", StringArrayToList(shiPaths))
 
-	builtinLoad(env, []Value{NewString("shi::core")})
+	BuiltinLoad(env, []Value{NewString("shi::core")})
 
 	if len(os.Args) > 1 {
 		for _, arg := range os.Args[1:] {
-			ParseFile(arg).Eval(env)
+			Eval(env, ParseFile(arg))
 		}
 	} else if stat, err := os.Stdin.Stat(); err == nil && stat.Size() > 0 {
 		run(env, "stdin", os.Stdin)
 	} else {
-		builtinLoad(env, []Value{NewString("shi::repl")})
-		Parse("repl", "(repl-run)")[0].Eval(env)
+		BuiltinLoad(env, []Value{NewString("shi::repl")})
+		Eval(env, Parse("repl", "(repl-run)")[0])
 	}
 }
 
@@ -55,6 +57,6 @@ func run(env *Environment, name string, input io.ReadWriteCloser) {
 	// Parse and eval all top level instruction
 	toplevel := Parse(name, string(contents))
 	for _, expr := range toplevel {
-		expr.Eval(env)
+		Eval(env, expr)
 	}
 }

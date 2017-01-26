@@ -1,4 +1,4 @@
-package main
+package shi
 
 import "fmt"
 
@@ -18,10 +18,6 @@ func NewRootEnvironment() *Environment {
 	env := NewEnvironment(nil)
 	AddBuiltins(env)
 	return env
-}
-
-func (v *Environment) Eval(env *Environment) Value {
-	return v
 }
 
 func (v *Environment) Type() string {
@@ -44,6 +40,10 @@ func (e *Environment) Root() *Environment {
 }
 
 func (e *Environment) Get(k string) Value {
+	if k == "*env*" {
+		return e
+	}
+
 	if v, ok := e.values[k]; ok {
 		return v
 	} else if e.parent != nil {

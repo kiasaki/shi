@@ -1,4 +1,5 @@
 (load shi::core::environment)
+(load shi::core::language)
 (load shi::core::list)
 (load shi::core::vector)
 (load shi::core::string)

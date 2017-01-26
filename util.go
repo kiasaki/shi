@@ -1,4 +1,4 @@
-package main
+package shi
 
 import (
 	"fmt"
@@ -48,11 +48,6 @@ func AssetArgListTypes(v Value, typeNames string) {
 	}
 }
 
-func FullEval(env *Environment, arg Value) Value {
-	if arg.Type() == "symbol" {
-		if v := env.Get(arg.String()); v != NULL {
-			return v
-		}
-	}
-	return arg.Eval(env)
+func BuildCall(symName string, vals []Value) Value {
+	return NewCell(append([]Value{NewSym(symName)}, vals...))
 }

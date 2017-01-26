@@ -1,15 +1,3 @@
-(+ 1 (- 5 3))
+(environment-set m (macro (x) `(list ,x ,x ,x)))
 
-'asd
-
-"as\na"
-
-1.4523
-
-(set ll (fn (& y) y))
-
-(write *stdout* (str (print-str (ll 2 7)) "\n"))
-
-(println *args*)
-
-(load "./tests")
+(write (str (print-str (m 3) "\n")))

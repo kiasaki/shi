@@ -1,4 +1,4 @@
-package main
+package shi
 
 import (
 	"fmt"
@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -21,7 +22,6 @@ func AddBuiltinSpecial(env *Environment, name string, fn func(*Environment, []Va
 
 func AddBuiltins(env *Environment) {
 	AddBuiltinSpecial(env, "type", builtinType)
-	AddBuiltinSpecial(env, "quote", builtinQuote)
 	AddBuiltinSpecial(env, "fn", builtinFn)
 	AddBuiltinSpecial(env, "apply", builtinApply)
 	AddBuiltin(env, "do", builtinDo)
@@ -38,6 +38,13 @@ func AddBuiltins(env *Environment) {
 	AddBuiltin(env, "parse", builtinParse)
 	AddBuiltin(env, "parse-file", builtinParseFile)
 	AddBuiltin(env, "load", builtinLoad)
+
+	AddBuiltinSpecial(env, "macro", builtinMacro)
+	AddBuiltinSpecial(env, "quote", builtinQuote)
+	AddBuiltinSpecial(env, "quasiquote", builtinQuasiquote)
+	AddBuiltinSpecial(env, "unquote", builtinUnquote)
+	AddBuiltinSpecial(env, "unquote-splicing", builtinUnquoteSplicing)
+	AddBuiltin(env, "gensym", builtinGensym)
 
 	AddBuiltin(env, "sym", builtinSym)
 
@@ -58,6 +65,7 @@ func AddBuiltins(env *Environment) {
 	env.Set("*stdin*", NewStream(os.Stdin))
 	env.Set("*stdout*", NewStream(os.Stdout))
 	env.Set("*stderr*", NewStream(os.Stderr))
+	env.Set("*gensym-counter*", NewInt(0))
 }
 
 // Language
@@ -67,12 +75,6 @@ func builtinType(env *Environment, vals []Value) Value {
 	AssetArgsSize(vals, 1, 1)
 
 	return NewString(vals[0].Type())
-}
-
-func builtinQuote(env *Environment, vals []Value) Value {
-	AssetArgsSize(vals, 1, 1)
-
-	return vals[0]
 }
 
 func builtinFn(env *Environment, vals []Value) Value {
@@ -93,7 +95,7 @@ func builtinApply(env *Environment, vals []Value) Value {
 	args := FullEval(env, vals[1])
 	AssetArgType(args, "list")
 
-	return NewCell(append([]Value{vals[0]}, args.(*Cell).Values...)).Eval(env)
+	return Eval(env, NewCell(append([]Value{vals[0]}, args.(*Cell).Values...)))
 }
 
 func builtinDo(env *Environment, vals []Value) Value {
@@ -120,11 +122,11 @@ func builtinTrapError(env *Environment, vals []Value) (ret Value) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			ret = NewCell([]Value{vals[1], NewString(fmt.Sprintf("%v", r))}).Eval(env)
+			ret = Eval(env, NewCell([]Value{vals[1], NewString(fmt.Sprintf("%v", r))}))
 		}
 	}()
 
-	ret = NewCell([]Value{vals[0]}).Eval(env)
+	ret = Eval(env, NewCell([]Value{vals[0]}))
 	return
 }
 
@@ -150,7 +152,7 @@ func builtinEnvironmentSet(env *Environment, vals []Value) Value {
 	var v = vals[1]
 
 	if len(vals) == 3 {
-		givenEnv := vals[0].Eval(env)
+		givenEnv := Eval(env, vals[0])
 		AssetArgType(givenEnv, "environment")
 		e = givenEnv.(*Environment)
 		k = vals[1]
@@ -159,6 +161,7 @@ func builtinEnvironmentSet(env *Environment, vals []Value) Value {
 	AssetArgType(k, "symbol")
 
 	valueToSet := FullEval(env, v)
+
 	e.Set(k.String(), valueToSet)
 	return valueToSet
 }
@@ -199,7 +202,7 @@ func builtinEval(env *Environment, vals []Value) Value {
 	e := FullEval(env, vals[0])
 	AssetArgType(e, "environment")
 
-	return vals[1].Eval(e.(*Environment))
+	return Eval(e.(*Environment), vals[1])
 }
 
 func builtinParse(env *Environment, vals []Value) Value {
@@ -242,11 +245,11 @@ func builtinLoadHelper(env *Environment, file string) bool {
 
 	if _, err := os.Stat(targetFile); err == nil {
 		// Try file
-		ParseFile(targetFile).Eval(env)
+		Eval(env, ParseFile(targetFile))
 		return true
 	} else if _, err := os.Stat(targetModule); err == nil {
 		// Try module
-		ParseFile(targetModule).Eval(env)
+		Eval(env, ParseFile(targetModule))
 		return true
 	}
 	return false
@@ -276,7 +279,7 @@ func builtinLoad(env *Environment, vals []Value) Value {
 	}
 
 	// Look for module in *shi-path* folders
-	shiPathsVal := env.Get("*shi-path*").Eval(env)
+	shiPathsVal := Eval(env, env.Get("*shi-path*"))
 	if shiPathsVal.Type() == "cell" {
 		panic("load: expected '*shi-path*' to be a string list")
 	}
@@ -290,6 +293,62 @@ func builtinLoad(env *Environment, vals []Value) Value {
 	}
 
 	panic(fmt.Sprintf("load: could not find module '%s'", targetFile))
+}
+
+func BuiltinLoad(env *Environment, vals []Value) Value {
+	return builtinLoad(env, vals)
+}
+
+// Macro
+// =======================
+
+func builtinMacro(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 1, -1)
+	AssetArgType(vals[0], "list")
+	AssetArgListType(vals[0], "symbol")
+
+	argNames := []string{}
+	for _, arg := range vals[0].(*Cell).Values {
+		argNames = append(argNames, arg.String())
+	}
+
+	return NewMacro(argNames, vals[1:])
+}
+
+func builtinQuote(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 1, 1)
+
+	return vals[0]
+}
+
+func builtinQuasiquote(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 1, 1)
+
+	return macroQQ(env, vals[0])
+}
+
+func builtinUnquote(env *Environment, vals []Value) Value {
+	panic("unqote: called outside of quasiquote")
+}
+
+func builtinUnquoteSplicing(env *Environment, vals []Value) Value {
+	panic("unquote-splicing: called outside of quasiquote")
+}
+
+func builtinGensym(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 0, 1)
+
+	prefix := "$gs$"
+	if len(vals) == 1 {
+		AssetArgType(vals[0], "symbol")
+		prefix = "%" + vals[0].String() + "%"
+	}
+
+	// TODO acquire lock
+	nextId := int64(env.Get("*gensym-counter*").(Int)) + 1
+	env.Set("*gensym-counter*", NewInt(nextId))
+
+	return NewSym(prefix + strconv.FormatInt(nextId, 10))
 }
 
 // Symbol

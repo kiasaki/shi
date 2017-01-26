@@ -1,0 +1,40 @@
+(set defmacro
+  (macro (name args & body)
+    `(do (set ,name (macro ,args ,@body))
+         ',name)))
+
+(defmacro defn (name args & body)
+  `(do (set ,name (fn ,args ,@body))
+       ',name))
+
+(defn not (x) (eq x nil))
+(defn identity (x) x)
+
+(set = eql)
+
+(defn > (x y) (< y x))
+(defn >= (x y) (not (< x y)))
+(defn <= (x y) (not (< y x)))
+(defn /= (x y) (not (= x y)))
+
+;(defmacro if (test then & else)
+;  `(cond (,test ,then)
+;         ,@(cond (else `((true ,@else))))))
+;
+;(defmacro when (test & body)
+;  `(cond (,test ,@body)))
+;
+;(defmacro let (args & body)
+;  ((fn (vars vals)
+;     (defn vars (x)
+;       (cond (x (cons (if (atom (car x))
+;                          (car x)
+;                        (caar x))
+;                      (vars (cdr x))))))
+;     (defn vals (x)
+;       (cond (x (cons (if (atom (car x))
+;                          nil
+;                        (cadar x))
+;                      (vals (cdr x))))))
+;     `((lambda ,(vars args) ,@body) ,@(vals args)))
+;   nil nil))
