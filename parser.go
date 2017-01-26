@@ -17,7 +17,22 @@ func LexerAST(l *Lexer, values []Value, state ReadState) []Value {
 	for token := l.NextToken(); token.Type != TokenEOF; token = l.NextToken() {
 		switch token.Type {
 		case TokenIdentifier:
-			values = append(values, NewSym(token.Value))
+			switch token.Value {
+			case "null":
+				values = append(values, NULL)
+			case "true":
+				values = append(values, TRUE)
+			case "false":
+				values = append(values, FALSE)
+			default:
+				values = append(values, NewSym(token.Value))
+			}
+		case TokenStringLiteral:
+			v, err := strconv.Unquote(token.Value)
+			if err != nil {
+				panic(err)
+			}
+			values = append(values, NewString(v))
 		case TokenIntegerLiteral:
 			v, err := strconv.ParseInt(token.Value, 10, 64)
 			if err != nil {
@@ -30,12 +45,6 @@ func LexerAST(l *Lexer, values []Value, state ReadState) []Value {
 				panic(err)
 			}
 			values = append(values, NewFloat(v))
-		case TokenStringLiteral:
-			v, err := strconv.Unquote(token.Value)
-			if err != nil {
-				panic(err)
-			}
-			values = append(values, NewString(v))
 		case TokenOpenParen:
 			value := NewCell(LexerAST(l, []Value{}, ReadStateList))
 			values = append(values, value)

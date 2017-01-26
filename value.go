@@ -18,69 +18,102 @@ func NewSym(name string) Value {
 	return &Sym{name: name}
 }
 
-func (s *Sym) Eval(env Environment) Value {
-	return s
+func (v *Sym) Eval(env Environment) Value {
+	return v
 }
 
-func (s *Sym) String() string {
-	return s.name
+func (v *Sym) String() string {
+	return v.name
 }
 
-// Int
+// Null
 // =======================
 
-type Int struct {
-	value int64
+type Null struct{}
+
+var NULL = Null{}
+
+func (v Null) Eval(env Environment) Value {
+	return v
 }
 
-func NewInt(value int64) Value {
-	return &Int{value: value}
+func (v Null) Type() string {
+	return "null"
 }
 
-func (s *Int) Eval(env Environment) Value {
-	return s
+func (v Null) String() string {
+	return "null"
 }
 
-func (s *Int) String() string {
-	return strconv.FormatInt(s.value, 10)
-}
-
-// Float
+// Boolean
 // =======================
 
-type Float struct {
-	value float64
+type Bool bool
+
+var TRUE = Bool(true)
+var FALSE = Bool(false)
+
+func (v Bool) Eval(env Environment) Value {
+	return v
 }
 
-func NewFloat(value float64) Value {
-	return &Float{value: value}
+func (v Bool) Type() string {
+	return "boolean"
 }
 
-func (s *Float) Eval(env Environment) Value {
-	return s
-}
-
-func (s *Float) String() string {
-	return strconv.FormatFloat(s.value, 'f', -1, 64)
+func (v Bool) String() string {
+	return strconv.FormatBool(bool(v))
 }
 
 // String
 // =======================
 
-type String struct {
-	value string
-}
+type String string
 
 func NewString(value string) Value {
-	return &String{value: value}
+	return String(value)
 }
 
-func (s *String) Eval(env Environment) Value {
-	return s
+func (v String) Eval(env Environment) Value {
+	return v
 }
 
-func (s *String) String() string {
-	return strconv.Quote(s.value)
+func (v String) String() string {
+	return strconv.Quote(string(v))
+}
+
+// Int
+// =======================
+
+type Int int64
+
+func NewInt(value int64) Value {
+	return Int(value)
+}
+
+func (v Int) Eval(env Environment) Value {
+	return v
+}
+
+func (v Int) String() string {
+	return strconv.FormatInt(int64(v), 10)
+}
+
+// Float
+// =======================
+
+type Float float64
+
+func NewFloat(value float64) Value {
+	return Float(value)
+}
+
+func (v Float) Eval(env Environment) Value {
+	return v
+}
+
+func (v Float) String() string {
+	return strconv.FormatFloat(float64(v), 'f', -1, 64)
 }
 
 // Cell
