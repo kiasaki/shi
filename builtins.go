@@ -176,10 +176,11 @@ func builtinLoad(env *Environment, vals []Value) Value {
 	if targetFile[0] == '.' {
 		// Relative file
 		ParseFile(targetFile).Eval(env)
+		return NULL
 	}
 
 	// Look for module in *shi-path* folders
-	shiPathsVal := env.Get("*shi-path*")
+	shiPathsVal := env.Get("*shi-path*").Eval(env)
 	if shiPathsVal.Type() == "cell" {
 		panic("load: expected '*shi-path*' to be a string list")
 	}

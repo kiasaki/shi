@@ -164,15 +164,7 @@ func (v *Cell) Eval(env *Environment) Value {
 
 	switch head.Type() {
 	case "builtin":
-		if head.(*Builtin).IsSpecial {
-			return (head.(*Builtin).Fn)(env, v.Values[1:])
-		} else {
-			args := []Value{}
-			for _, arg := range v.Values[1:] {
-				args = append(args, FullEval(env, arg))
-			}
-			return (head.(*Builtin).Fn)(env, args)
-		}
+		return head.(*Builtin).Apply(env, v.Values[1:])
 	case "closure":
 		return head.(*Closure).Apply(env, v.Values[1:])
 	default:
@@ -236,6 +228,18 @@ type Builtin struct {
 
 func NewBuiltin(name string, fn BuiltinFn) Value {
 	return &Builtin{Name: name, Fn: fn, IsSpecial: false}
+}
+
+func (v *Builtin) Apply(env *Environment, args []Value) Value {
+	if v.IsSpecial {
+		return (v.Fn)(env, args)
+	} else {
+		evaluatedArgs := []Value{}
+		for _, arg := range args {
+			evaluatedArgs = append(evaluatedArgs, FullEval(env, arg))
+		}
+		return (v.Fn)(env, evaluatedArgs)
+	}
 }
 
 func (v *Builtin) Eval(env *Environment) Value {

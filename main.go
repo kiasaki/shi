@@ -11,7 +11,7 @@ import (
 const ShiVersion = "0.1.0"
 
 func StringArrayToList(vs []string) Value {
-	list := []Value{}
+	list := []Value{NewSym("list")}
 	for _, v := range vs {
 		list = append(list, NewString(v))
 	}

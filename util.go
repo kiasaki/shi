@@ -49,11 +49,10 @@ func AssetArgListTypes(v Value, typeNames string) {
 }
 
 func FullEval(env *Environment, arg Value) Value {
-	v := arg.Eval(env)
-	if v.Type() == "symbol" {
-		if vv := env.Get(v.String()); vv != NULL {
-			v = vv
+	if arg.Type() == "symbol" {
+		if v := env.Get(arg.String()); v != NULL {
+			return v
 		}
 	}
-	return v
+	return arg.Eval(env)
 }
