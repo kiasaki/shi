@@ -51,3 +51,18 @@ func AssetArgListTypes(v Value, typeNames string) {
 func BuildCall(symName string, vals []Value) Value {
 	return NewCell(append([]Value{NewSym(symName)}, vals...))
 }
+
+func printValues(ld, rd string, readably bool, vals []Value) string {
+	formatted := ld
+	for i, value := range vals {
+		if i > 0 {
+			formatted += " "
+		}
+		if v, ok := value.(ReadablyStringer); ok && readably {
+			formatted += v.ReadableString()
+		} else {
+			formatted += value.String()
+		}
+	}
+	return formatted + rd
+}

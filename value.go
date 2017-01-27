@@ -11,6 +11,10 @@ type Value interface {
 	String() string
 }
 
+type ReadablyStringer interface {
+	ReadableString() string
+}
+
 type Callable interface {
 	Call(*Environment, []Value) Value
 }
@@ -26,7 +30,7 @@ func NewSym(name string) Value {
 	return &Sym{Name: name}
 }
 
-func (v *Sym) Type() string {
+func (*Sym) Type() string {
 	return "symbol"
 }
 
@@ -41,7 +45,7 @@ type Null struct{}
 
 var NULL = Null{}
 
-func (v Null) Type() string {
+func (Null) Type() string {
 	return "null"
 }
 
@@ -57,7 +61,7 @@ type Bool bool
 var TRUE = Bool(true)
 var FALSE = Bool(false)
 
-func (v Bool) Type() string {
+func (Bool) Type() string {
 	return "boolean"
 }
 
@@ -74,12 +78,16 @@ func NewString(value string) Value {
 	return String(value)
 }
 
-func (v String) Type() string {
+func (String) Type() string {
 	return "string"
 }
 
 func (v String) String() string {
 	return strconv.Quote(string(v))
+}
+
+func (v String) ReadableString() string {
+	return string(v)
 }
 
 // Int
@@ -91,7 +99,7 @@ func NewInt(value int64) Value {
 	return Int(value)
 }
 
-func (v Int) Type() string {
+func (Int) Type() string {
 	return "integer"
 }
 
@@ -108,7 +116,7 @@ func NewFloat(value float64) Value {
 	return Float(value)
 }
 
-func (v Float) Type() string {
+func (Float) Type() string {
 	return "float"
 }
 
@@ -127,19 +135,39 @@ func NewCell(values []Value) Value {
 	return &Cell{Values: values}
 }
 
-func (v Cell) Type() string {
+func (*Cell) Type() string {
 	return "list"
 }
 
-func (s *Cell) String() string {
-	formatted := "("
-	for i, v := range s.Values {
-		if i > 0 {
-			formatted += " "
-		}
-		formatted += v.String()
-	}
-	return formatted + ")"
+func (v *Cell) String() string {
+	return printValues("(", ")", false, v.Values)
+}
+
+func (v *Cell) ReadableString() string {
+	return printValues("(", ")", true, v.Values)
+}
+
+// Vector
+// =======================
+
+type Vector struct {
+	Values []Value
+}
+
+func NewVector(values []Value) Value {
+	return &Vector{Values: values}
+}
+
+func (*Vector) Type() string {
+	return "vector"
+}
+
+func (v *Vector) String() string {
+	return printValues("[", "]", false, v.Values)
+}
+
+func (v *Vector) ReadableString() string {
+	return printValues("[", "]", true, v.Values)
 }
 
 // Stream
@@ -159,7 +187,7 @@ func (v *Stream) Write(bs []byte) {
 	}
 }
 
-func (v *Stream) Type() string {
+func (*Stream) Type() string {
 	return "stream"
 }
 
@@ -193,7 +221,7 @@ func (v *Builtin) Call(env *Environment, args []Value) Value {
 	}
 }
 
-func (v *Builtin) Type() string {
+func (*Builtin) Type() string {
 	return "builtin"
 }
 
@@ -227,7 +255,7 @@ func (v *Closure) Call(env *Environment, args []Value) Value {
 	}
 }
 
-func (v *Closure) Type() string {
+func (*Closure) Type() string {
 	return "closure"
 }
 
@@ -262,7 +290,7 @@ func (v *Macro) Call(env *Environment, args []Value) Value {
 	return result
 }
 
-func (v *Macro) Type() string {
+func (*Macro) Type() string {
 	return "macro"
 }
 
