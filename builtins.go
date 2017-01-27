@@ -2,11 +2,9 @@ package shi
 
 import (
 	"fmt"
-	"io"
 	"math"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
 
@@ -21,61 +19,70 @@ func AddBuiltinSpecial(env *Environment, name string, fn func(*Environment, []Va
 }
 
 func AddBuiltins(env *Environment) {
-	AddBuiltinSpecial(env, "type", builtinType)
+	// Language
 	AddBuiltinSpecial(env, "fn", builtinFn)
-	AddBuiltinSpecial(env, "apply", builtinApply)
 	AddBuiltin(env, "do", builtinDo)
+	AddBuiltinSpecial(env, "cond", builtinCond)
+	AddBuiltinSpecial(env, "loop", builtinLoop)
+	AddBuiltin(env, "recur", builtinRecur)
+	AddBuiltinSpecial(env, "quote", builtinQuote)
+	AddBuiltinSpecial(env, "macro", builtinMacro)
 
+	// Basics
+	env.Set("*print-readably*", TRUE)
+	AddBuiltin(env, "pr-str", builtinPrStr)
+	AddBuiltinSpecial(env, "type", builtinType)
+	AddBuiltin(env, "parse", builtinParse)
+	AddBuiltin(env, "eval", builtinEval)
+	AddBuiltin(env, "load", builtinLoad)
+
+	// Errors
 	AddBuiltin(env, "error", builtinError)
 	AddBuiltin(env, "trap-error", builtinTrapError)
 
+	// Environments
 	AddBuiltin(env, "environment", builtinEnvironment)
 	AddBuiltin(env, "root-environment", builtinRootEnvironment)
 	AddBuiltinSpecial(env, "environment-set", builtinEnvironmentSet)
-	AddBuiltinSpecial(env, "environment-get", builtinEnvironmentGet)
+	AddBuiltin(env, "environment-get", builtinEnvironmentGet)
 	AddBuiltin(env, "environment-root", builtinEnvironmentRoot)
-	AddBuiltinSpecial(env, "eval", builtinEval)
-	AddBuiltin(env, "parse", builtinParse)
-	AddBuiltin(env, "parse-file", builtinParseFile)
-	AddBuiltin(env, "load", builtinLoad)
 
-	AddBuiltinSpecial(env, "macro", builtinMacro)
-	AddBuiltinSpecial(env, "quote", builtinQuote)
-	AddBuiltinSpecial(env, "quasiquote", builtinQuasiquote)
-	AddBuiltinSpecial(env, "unquote", builtinUnquote)
-	AddBuiltinSpecial(env, "unquote-splicing", builtinUnquoteSplicing)
-	AddBuiltin(env, "gensym", builtinGensym)
+	// Compare
+	AddBuiltin(env, "eq", builtinEq)
+	AddBuiltin(env, "eql", builtinEql)
 
+	// Symbols
 	AddBuiltin(env, "sym", builtinSym)
 
+	// Strings
 	AddBuiltin(env, "str", builtinStr)
 	AddBuiltin(env, "str-join", builtinStrJoin)
 
+	// Lists
+	AddBuiltin(env, "cons", builtinCons)
+	AddBuiltin(env, "list", builtinList)
+	AddBuiltin(env, "list-join", builtinListJoin)
+
+	// Math
 	AddBuiltin(env, "+", builtinPlus)
 	AddBuiltin(env, "-", builtinMinus)
 	AddBuiltin(env, "/", builtinQuotient)
 	AddBuiltin(env, "*", builtinProduct)
+	AddBuiltin(env, "mod", builtinMod)
 
-	AddBuiltin(env, "list", builtinList)
-
+	// Streams / IO
+	AddBuiltin(env, "read", builtinRead)
 	AddBuiltin(env, "write", builtinWrite)
-	AddBuiltin(env, "read-line", builtinReadLine)
-	AddBuiltin(env, "print-str", builtinPrintStr)
+	env.Set("*stdin*", NewStream(StreamDirIn, os.Stdin))
+	env.Set("*stdout*", NewStream(StreamDirOut, os.Stdout))
+	env.Set("*stderr*", NewStream(StreamDirOut, os.Stderr))
 
-	env.Set("*stdin*", NewStream(os.Stdin))
-	env.Set("*stdout*", NewStream(os.Stdout))
-	env.Set("*stderr*", NewStream(os.Stderr))
-	env.Set("*gensym-counter*", NewInt(0))
+	// OS
+	AddBuiltin(env, "exit", builtinExit)
 }
 
 // Language
 // =======================
-
-func builtinType(env *Environment, vals []Value) Value {
-	AssetArgsSize(vals, 1, 1)
-
-	return NewString(vals[0].Type())
-}
 
 func builtinFn(env *Environment, vals []Value) Value {
 	AssetArgsSize(vals, 1, -1)
@@ -89,15 +96,6 @@ func builtinFn(env *Environment, vals []Value) Value {
 	return NewClosure(env, argNames, vals[1:])
 }
 
-func builtinApply(env *Environment, vals []Value) Value {
-	AssetArgsSize(vals, 2, 2)
-
-	args := FullEval(env, vals[1])
-	AssetArgType(args, "list")
-
-	return Eval(env, NewCell(append([]Value{vals[0]}, args.(*Cell).Values...)))
-}
-
 func builtinDo(env *Environment, vals []Value) Value {
 	if len(vals) == 0 {
 		return NULL
@@ -106,103 +104,102 @@ func builtinDo(env *Environment, vals []Value) Value {
 	}
 }
 
-// Error
-// =======================
-
-func builtinError(env *Environment, vals []Value) Value {
-	AssetArgsSize(vals, 1, 1)
-	AssetArgType(vals[0], "string")
-	panic(string(vals[0].(String)))
-}
-
-func builtinTrapError(env *Environment, vals []Value) (ret Value) {
-	AssetArgsSize(vals, 2, 2)
-	AssetArgType(vals[0], "closure")
-	AssetArgType(vals[1], "closure")
-
-	defer func() {
-		if r := recover(); r != nil {
-			ret = Eval(env, NewCell([]Value{vals[1], NewString(fmt.Sprintf("%v", r))}))
+func builtinCond(env *Environment, vals []Value) Value {
+	pairs := groupValsAsPairs("cond", vals)
+	for _, pair := range pairs {
+		// Special 'else' case
+		if pair[0].Type() == "symbol" && pair[0].String() == "else" {
+			return Eval(env, pair[1])
 		}
-	}()
 
-	ret = Eval(env, NewCell([]Value{vals[0]}))
-	return
+		value := Eval(env, pair[0])
+		if value != FALSE && value != NULL {
+			// Condition test passed, return branch value
+			return Eval(env, pair[1])
+		}
+	}
+	return NULL
 }
 
-// Environment
+func builtinLoop(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 1, -1)
+	AssetArgType(vals[0], "list")
+
+	letNames := []string{}
+	letValues := []Value{}
+	for i, letVal := range vals[0].(*Cell).Values {
+		if i%2 == 0 {
+			if letVal.Type() != "symbol" {
+				panic(fmt.Sprintf("loop: given a non-symbol value name: %s", letVal))
+			}
+			letNames = append(letNames, letVal.(*Sym).Name)
+		} else {
+			letValues = append(letValues, letVal)
+		}
+	}
+
+	argsEnv := NewEnvironment(env)
+	buildCallEnv(true, env, argsEnv, letNames, letValues)
+
+	// Tail Call Optimized loop
+	result := Value(NULL)
+	for {
+		// Execute body updating result
+		for _, expr := range vals[1:] {
+			result = Eval(argsEnv, expr)
+		}
+		// If result is a recur call, loop again, else return
+		if result.Type() != "list" || result.(*Cell).Values[0].String() != "recur" {
+			return result
+		}
+
+		// Update environment with new values from recur call
+		argsLeft := buildCallEnv(false, argsEnv, argsEnv, letNames, result.(*Cell).Values[1:])
+		if len(argsLeft) > 0 {
+			panic(fmt.Sprintf(
+				"recur: called with %d values, loop declared %d",
+				len(result.(*Cell).Values)-1, len(letNames),
+			))
+		}
+	}
+}
+
+func builtinRecur(env *Environment, vals []Value) Value {
+	return BuildCall("recur", vals)
+}
+
+func builtinQuote(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 1, 1)
+
+	return vals[0]
+}
+
+func builtinMacro(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 1, -1)
+	AssetArgType(vals[0], "list")
+	AssetArgListType(vals[0], "symbol")
+
+	argNames := []string{}
+	for _, arg := range vals[0].(*Cell).Values {
+		argNames = append(argNames, arg.String())
+	}
+
+	return NewMacro(argNames, vals[1:])
+}
+
+// Basics
 // =======================
 
-func builtinEnvironment(env *Environment, vals []Value) Value {
+func builtinPrStr(env *Environment, vals []Value) Value {
+	printReadablyVal := env.Get("*print-readably*")
+	printReadably := printReadablyVal != NULL && printReadablyVal != FALSE
+	return NewString(printValues("", "", printReadably, vals))
+}
+
+func builtinType(env *Environment, vals []Value) Value {
 	AssetArgsSize(vals, 1, 1)
-	AssetArgType(vals[0], "environment")
 
-	return NewEnvironment(vals[0].(*Environment))
-}
-
-func builtinRootEnvironment(env *Environment, vals []Value) Value {
-	return NewRootEnvironment()
-}
-
-func builtinEnvironmentSet(env *Environment, vals []Value) Value {
-	AssetArgsSize(vals, 2, 3)
-
-	var e = env
-	var k = vals[0]
-	var v = vals[1]
-
-	if len(vals) == 3 {
-		givenEnv := Eval(env, vals[0])
-		AssetArgType(givenEnv, "environment")
-		e = givenEnv.(*Environment)
-		k = vals[1]
-		v = vals[2]
-	}
-	AssetArgType(k, "symbol")
-
-	valueToSet := FullEval(env, v)
-
-	e.Set(k.String(), valueToSet)
-	return valueToSet
-}
-
-func builtinEnvironmentGet(env *Environment, vals []Value) Value {
-	AssetArgsSize(vals, 1, 2)
-
-	var e = env
-	var k Value
-
-	if len(vals) > 0 && vals[0].Type() == "environment" {
-		e = vals[0].(*Environment)
-		AssetArgsSize(vals, 2, 2)
-		AssetArgType(vals[1], "symbol")
-		k = vals[1]
-	} else {
-		AssetArgsSize(vals, 1, 1)
-		AssetArgType(vals[0], "symbol")
-		k = vals[0]
-	}
-
-	return e.Get(k.String())
-}
-
-func builtinEnvironmentRoot(env *Environment, vals []Value) Value {
-	AssetArgsSize(vals, 0, 1)
-	e := env
-	if len(vals) > 0 && vals[0].Type() == "environment" {
-		e = vals[0].(*Environment)
-	}
-
-	return e.Root()
-}
-
-func builtinEval(env *Environment, vals []Value) Value {
-	AssetArgsSize(vals, 2, 2)
-
-	e := FullEval(env, vals[0])
-	AssetArgType(e, "environment")
-
-	return Eval(e.(*Environment), vals[1])
+	return NewString(vals[0].Type())
 }
 
 func builtinParse(env *Environment, vals []Value) Value {
@@ -217,7 +214,7 @@ func builtinParse(env *Environment, vals []Value) Value {
 	AssetArgType(name, "string")
 	AssetArgType(contents, "string")
 
-	topLevel := Parse(string(name.(String)), string(name.(String)))
+	topLevel := Parse(string(name.(String)), string(contents.(String)))
 
 	if len(topLevel) == 1 {
 		return topLevel[0]
@@ -227,11 +224,13 @@ func builtinParse(env *Environment, vals []Value) Value {
 	}
 }
 
-func builtinParseFile(env *Environment, vals []Value) Value {
-	AssetArgsSize(vals, 1, 1)
-	AssetArgType(vals[0], "string")
+func builtinEval(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 2, 2)
 
-	return ParseFile(string(vals[0].(String)))
+	e := FullEval(env, vals[0])
+	AssetArgType(e, "environment")
+
+	return Eval(e.(*Environment), vals[1])
 }
 
 func builtinLoadHelper(env *Environment, file string) bool {
@@ -299,59 +298,122 @@ func BuiltinLoad(env *Environment, vals []Value) Value {
 	return builtinLoad(env, vals)
 }
 
-// Macro
+// Error
 // =======================
 
-func builtinMacro(env *Environment, vals []Value) Value {
-	AssetArgsSize(vals, 1, -1)
-	AssetArgType(vals[0], "list")
-	AssetArgListType(vals[0], "symbol")
+func builtinError(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 1, 1)
+	AssetArgType(vals[0], "string")
+	panic(string(vals[0].(String)))
+}
 
-	argNames := []string{}
-	for _, arg := range vals[0].(*Cell).Values {
-		argNames = append(argNames, arg.String())
+func builtinTrapError(env *Environment, vals []Value) (ret Value) {
+	AssetArgsSize(vals, 2, 2)
+	AssetArgType(vals[0], "closure")
+	AssetArgType(vals[1], "closure")
+
+	defer func() {
+		if r := recover(); r != nil {
+			ret = Eval(env, NewCell([]Value{vals[1], NewString(fmt.Sprintf("%v", r))}))
+		}
+	}()
+
+	ret = Eval(env, NewCell([]Value{vals[0]}))
+	return
+}
+
+// Environment
+// =======================
+
+func builtinEnvironment(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 1, 1)
+	AssetArgType(vals[0], "environment")
+
+	return NewEnvironment(vals[0].(*Environment))
+}
+
+func builtinRootEnvironment(env *Environment, vals []Value) Value {
+	return NewRootEnvironment()
+}
+
+func builtinEnvironmentSet(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 2, 3)
+
+	var e = env
+	var k = vals[0]
+	var v = vals[1]
+
+	if len(vals) == 3 {
+		givenEnv := Eval(env, vals[0])
+		AssetArgType(givenEnv, "environment")
+		e = givenEnv.(*Environment)
+		k = vals[1]
+		v = vals[2]
 	}
+	AssetArgType(k, "symbol")
 
-	return NewMacro(argNames, vals[1:])
+	valueToSet := Eval(env, v)
+	e.Set(k.String(), valueToSet)
+	return valueToSet
 }
 
-func builtinQuote(env *Environment, vals []Value) Value {
-	AssetArgsSize(vals, 1, 1)
+func builtinEnvironmentGet(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 1, 2)
 
-	return vals[0]
-}
+	var e = env
+	var k Value
 
-func builtinQuasiquote(env *Environment, vals []Value) Value {
-	AssetArgsSize(vals, 1, 1)
-
-	return macroQQ(env, vals[0])
-}
-
-func builtinUnquote(env *Environment, vals []Value) Value {
-	panic("unqote: called outside of quasiquote")
-}
-
-func builtinUnquoteSplicing(env *Environment, vals []Value) Value {
-	panic("unquote-splicing: called outside of quasiquote")
-}
-
-func builtinGensym(env *Environment, vals []Value) Value {
-	AssetArgsSize(vals, 0, 1)
-
-	prefix := "$gs$"
-	if len(vals) == 1 {
+	if len(vals) > 0 && vals[0].Type() == "environment" {
+		e = vals[0].(*Environment)
+		AssetArgsSize(vals, 2, 2)
+		AssetArgType(vals[1], "symbol")
+		k = vals[1]
+	} else {
+		AssetArgsSize(vals, 1, 1)
 		AssetArgType(vals[0], "symbol")
-		prefix = "%" + vals[0].String() + "%"
+		k = vals[0]
 	}
 
-	// TODO acquire lock
-	nextId := int64(env.Get("*gensym-counter*").(Int)) + 1
-	env.Set("*gensym-counter*", NewInt(nextId))
-
-	return NewSym(prefix + strconv.FormatInt(nextId, 10))
+	return e.Get(k.String())
 }
 
-// Symbol
+func builtinEnvironmentRoot(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 0, 1)
+	e := env
+	if len(vals) > 0 && vals[0].Type() == "environment" {
+		e = vals[0].(*Environment)
+	}
+
+	return e.Root()
+}
+
+// Compare
+// =======================
+
+// = by value
+func builtinEq(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 2, 2)
+
+	// TODO use Comparable interface
+	if vals[0] == vals[1] {
+		return TRUE
+	} else {
+		return FALSE
+	}
+}
+
+// = by pointer
+func builtinEql(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 2, 2)
+
+	if vals[0] == vals[1] {
+		return TRUE
+	} else {
+		return FALSE
+	}
+}
+
+// Symbols
 // =======================
 
 func builtinSym(env *Environment, vals []Value) Value {
@@ -361,7 +423,7 @@ func builtinSym(env *Environment, vals []Value) Value {
 	return NewSym(string(vals[0].(String)))
 }
 
-// String
+// Strings
 // =======================
 
 func builtinStr(env *Environment, vals []Value) Value {
@@ -385,7 +447,33 @@ func builtinStrJoin(env *Environment, vals []Value) Value {
 	return NewString(str)
 }
 
-// Numbers
+// Lists
+// =======================
+
+func builtinCons(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 2, 2)
+	AssetArgType(vals[1], "list")
+
+	return NewCell(append([]Value{vals[0]}, vals[1].(*Cell).Values...))
+}
+
+func builtinList(env *Environment, vals []Value) Value {
+	return NewCell(vals)
+}
+
+func builtinListJoin(env *Environment, vals []Value) Value {
+	AssetArgType(vals[1], "list")
+	AssetArgListType(vals[1], "string")
+
+	joinedVals := []Value{}
+	for _, v := range vals {
+		joinedVals = append(joinedVals, v.(*Cell).Values...)
+	}
+
+	return NewCell(joinedVals)
+}
+
+// Math
 // =======================
 
 func valueAsFloat(v Value) float64 {
@@ -434,50 +522,77 @@ var builtinProduct = buildBuiltinOp(func(a, b float64) float64 {
 	return a * b
 })
 
-// List
-// =======================
-
-func builtinList(env *Environment, vals []Value) Value {
-	return NewCell(vals)
-}
+var builtinMod = buildBuiltinOp(func(a, b float64) float64 {
+	return float64(int64(a) % int64(b))
+})
 
 // Streams & I/O
 // =======================
 
-func builtinWrite(env *Environment, vals []Value) Value {
-	AssetArgsSize(vals, 2, 2)
-	AssetArgType(vals[0], "stream")
-	AssetArgType(vals[1], "string")
+func builtinRead(env *Environment, vals []Value) Value {
+	streamVal := env.Get("*in*")
+	if len(vals) == 1 {
+		streamVal = vals[0]
+	}
+	AssetArgType(streamVal, "stream")
 
-	vals[0].(*Stream).Write([]byte(vals[1].(String)))
-	return vals[1]
-}
+	stream := streamVal.(*Stream)
 
-func builtinReadLine(env *Environment, vals []Value) Value {
-	AssetArgsSize(vals, 1, 1)
-	AssetArgType(vals[0], "stream")
-
-	var err error
-	var bs = []byte{}
-	var b = make([]byte, 1)
-	for b[0] != byte('\n') {
-		_, err = vals[0].(*Stream).Value.Read(b)
-		if err == io.EOF {
-			if len(bs) == 0 {
-				return NULL
-			} else {
-				return NewString(string(bs))
-			}
-		} else if err != nil {
-			panic(fmt.Sprintf("read-line: %v", err))
-		}
-		bs = append(bs, b[0])
+	if stream.Direction != StreamDirIn {
+		panic("read: given stream with direction not equal to 'in'")
 	}
 
-	return NewString(string(bs))
+	r, _, err := stream.In.ReadRune()
+	if err != nil {
+		panic(fmt.Sprintf("read: %s", err))
+	}
+
+	return NewString(string(r))
 }
 
-func builtinPrintStr(env *Environment, vals []Value) Value {
-	pretty := NewCell(vals).String()
-	return NewString(pretty[1 : len(pretty)-1])
+func builtinWrite(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 1, 2)
+
+	streamVal := env.Get("*out*")
+	stringVal := vals[0]
+
+	if len(vals) == 2 {
+		streamVal = vals[0]
+		stringVal = vals[1]
+	}
+
+	AssetArgType(streamVal, "stream")
+	AssetArgType(stringVal, "string")
+
+	stream := streamVal.(*Stream)
+	if stream.Direction != StreamDirOut {
+		panic("write: given stream with direction not equal to 'out'")
+	}
+
+	_, err := stream.Out.Write([]byte(stringVal.(String)))
+	if err != nil {
+		panic(fmt.Sprintf("write: %s", err))
+	}
+	err = stream.Out.Flush()
+	if err != nil {
+		panic(fmt.Sprintf("write: %s", err))
+	}
+
+	return stringVal
+}
+
+// OS
+// =======================
+
+func builtinExit(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 0, 1)
+
+	exitCode := 0
+	if len(vals) == 1 {
+		AssetArgType(vals[0], "integer")
+		exitCode = int(vals[0].(Int))
+	}
+
+	os.Exit(exitCode)
+	return NULL
 }

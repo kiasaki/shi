@@ -66,3 +66,15 @@ func printValues(ld, rd string, readably bool, vals []Value) string {
 	}
 	return formatted + rd
 }
+
+func groupValsAsPairs(receiver string, vals []Value) [][]Value {
+	if len(vals)%2 != 0 {
+		panic(fmt.Sprintf("%s: wanted a pair number of values, got %s", receiver, len(vals)))
+	}
+
+	pairs := [][]Value{}
+	for i := 0; i < len(vals); i += 2 {
+		pairs = append(pairs, vals[i:i+2])
+	}
+	return pairs
+}

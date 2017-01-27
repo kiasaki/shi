@@ -9,19 +9,12 @@ func EvalList(env *Environment, v *Cell) Value {
 	if os.Getenv("DEBUG") != "" {
 		fmt.Fprintf(os.Stderr, "debug: eval: %s\n", v)
 	}
+
 	if len(v.Values) == 0 {
 		return v
 	}
 
-	head := v.Values[0]
-	if head.Type() == "symbol" {
-		name := head.String()
-		head = env.Get(name)
-		if head.Type() == "null" {
-			panic(fmt.Sprintf("trying to call unbound symbol '%s' in '%s'", name, v))
-		}
-	}
-
+	head := Eval(env, v.Values[0])
 	if c, ok := head.(Callable); ok {
 		return c.Call(env, v.Values[1:])
 	} else {
@@ -31,6 +24,12 @@ func EvalList(env *Environment, v *Cell) Value {
 
 func Eval(env *Environment, v Value) Value {
 	switch t := v.(type) {
+	case *Sym:
+		symValue := env.Get(t.Name)
+		if symValue == NULL {
+			panic(fmt.Sprintf("eval: unbound symbol '%s'", t.Name))
+		}
+		return symValue
 	case *Cell:
 		return EvalList(env, t)
 	default:
@@ -85,48 +84,4 @@ func buildCallEnv(doEval bool, evalEnv, argsEnv *Environment, wantedArgs []strin
 	}
 
 	return argNames
-}
-
-func macroQuote(val Value) Value {
-	switch v := val.(type) {
-	case *Cell, *Sym:
-		return NewCell([]Value{NewSym("quote"), val})
-	default:
-		return v
-	}
-}
-
-func macroQQ(env *Environment, val Value, level int) Value {
-	switch v := val.(type) {
-	case *Cell:
-		if len(v.Values) == 0 {
-			return nil
-		}
-		if v.Values[0].String() == "unquote" && level == 0 {
-			return v.Values[1]
-		}
-		appendArgs := macroQQAppendArgs(val, level)
-		return BuildCall("list-join", appendArgs)
-	default:
-		return macroQuote(v)
-	}
-}
-
-func macroQQAppendArgs(val Value, level int) []Value {
-	if v, ok := val.(*Cell); ok {
-		if len(v.Values) == 0 {
-			return v
-		}
-		switch v.Values[0].String() {
-		case "unquote":
-			if level == 0 {
-				return v.Values[1:]
-			}
-			level--
-		case "quasiquote":
-			level++
-		}
-		a := macroQQAppendArg(v.Values[0])
-	}
-	return []Value{macroQuote(val)}
 }

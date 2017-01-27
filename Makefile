@@ -1,7 +1,11 @@
+.PHONY: shi shi0
+
 run: build
 	./shi
 
-build: *.go
+build: shi
+
+shi: *.go
 	go build -o shi ./cmd/shi/main.go
 
 shi0:

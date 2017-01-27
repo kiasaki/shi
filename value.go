@@ -1,6 +1,7 @@
 package shi
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"strconv"
@@ -173,17 +174,26 @@ func (v *Vector) ReadableString() string {
 // Stream
 // =======================
 
+type StreamDir string
+
+const (
+	StreamDirIn  StreamDir = "in"
+	StreamDirOut           = "out"
+)
+
 type Stream struct {
-	Value io.ReadWriteCloser
+	Direction StreamDir
+	Value     io.ReadWriteCloser
+	In        *bufio.Reader
+	Out       *bufio.Writer
 }
 
-func NewStream(v io.ReadWriteCloser) Value {
-	return &Stream{Value: v}
-}
-
-func (v *Stream) Write(bs []byte) {
-	if _, err := v.Value.Write(bs); err != nil {
-		panic(fmt.Sprintf("error writing to stream: %s", err))
+func NewStream(dir StreamDir, v io.ReadWriteCloser) Value {
+	return &Stream{
+		Direction: dir,
+		Value:     v,
+		In:        bufio.NewReader(v),
+		Out:       bufio.NewWriter(v),
 	}
 }
 
@@ -192,7 +202,7 @@ func (*Stream) Type() string {
 }
 
 func (v *Stream) String() string {
-	return fmt.Sprintf("#<stream %p>", v)
+	return fmt.Sprintf("#<stream %s %p>", v.Direction, v)
 }
 
 // Builtin
@@ -283,11 +293,11 @@ func (v *Macro) Call(env *Environment, args []Value) Value {
 		panic(fmt.Sprintf("macro called without all arguments, wanted '%s', got '%s'", v.ArgNames, args))
 	}
 
-	var result Value = NULL
+	var expandedValue Value = NULL
 	for _, expr := range v.Body {
-		result = Eval(evalEnv, expr)
+		expandedValue = Eval(evalEnv, expr)
 	}
-	return result
+	return Eval(env, expandedValue)
 }
 
 func (*Macro) Type() string {
@@ -295,5 +305,5 @@ func (*Macro) Type() string {
 }
 
 func (v *Macro) String() string {
-	return fmt.Sprintf("#<macro %p %v>", v, v.ArgNames)
+	return fmt.Sprintf("#<macro %p>", v)
 }
