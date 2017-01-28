@@ -37,23 +37,14 @@ func Eval(env *Environment, v Value) Value {
 	}
 }
 
-func FullEval(env *Environment, v Value) Value {
-	if v.Type() == "symbol" {
-		if vv := env.Get(v.String()); vv != NULL {
-			return vv
-		}
-	}
-	return Eval(env, v)
-}
-
-func buildCallEnv(doEval bool, evalEnv, argsEnv *Environment, wantedArgs []string, args []Value) []string {
+func buildCallEnv(doEval bool, callerEnv, argsEnv *Environment, wantedArgs []string, args []Value) []string {
 	rest := ""
 	restValues := []Value{}
 	argNames := wantedArgs
 
 	var eval = func(arg Value) Value {
 		if doEval {
-			return FullEval(argsEnv, arg)
+			return Eval(callerEnv, arg)
 		}
 		return arg
 	}
@@ -74,13 +65,13 @@ func buildCallEnv(doEval bool, evalEnv, argsEnv *Environment, wantedArgs []strin
 			argNames = []string{}
 			restValues = append(restValues, eval(arg))
 		} else {
-			evalEnv.Set(argNames[0], eval(arg))
+			argsEnv.Set(argNames[0], eval(arg))
 			argNames = argNames[1:]
 		}
 	}
 
 	if rest != "" {
-		evalEnv.Set(rest, NewCell(restValues))
+		argsEnv.Set(rest, NewCell(restValues))
 	}
 
 	return argNames

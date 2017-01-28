@@ -31,7 +31,7 @@ func AddBuiltins(env *Environment) {
 	// Basics
 	env.Set("*print-readably*", TRUE)
 	AddBuiltin(env, "pr-str", builtinPrStr)
-	AddBuiltinSpecial(env, "type", builtinType)
+	AddBuiltin(env, "type", builtinType)
 	AddBuiltin(env, "parse", builtinParse)
 	AddBuiltin(env, "eval", builtinEval)
 	AddBuiltin(env, "load", builtinLoad)
@@ -61,7 +61,10 @@ func AddBuiltins(env *Environment) {
 	// Lists
 	AddBuiltin(env, "cons", builtinCons)
 	AddBuiltin(env, "list", builtinList)
+	AddBuiltin(env, "list-nth", builtinListNth)
 	AddBuiltin(env, "list-join", builtinListJoin)
+	AddBuiltin(env, "list-slice", builtinListSlice)
+	AddBuiltin(env, "list-length", builtinListLength)
 
 	// Math
 	AddBuiltin(env, "+", builtinPlus)
@@ -227,7 +230,7 @@ func builtinParse(env *Environment, vals []Value) Value {
 func builtinEval(env *Environment, vals []Value) Value {
 	AssetArgsSize(vals, 2, 2)
 
-	e := FullEval(env, vals[0])
+	e := Eval(env, vals[0])
 	AssetArgType(e, "environment")
 
 	return Eval(e.(*Environment), vals[1])
@@ -461,9 +464,18 @@ func builtinList(env *Environment, vals []Value) Value {
 	return NewCell(vals)
 }
 
-func builtinListJoin(env *Environment, vals []Value) Value {
+func builtinListNth(env *Environment, vals []Value) Value {
+	AssetArgType(vals[0], "integer")
 	AssetArgType(vals[1], "list")
-	AssetArgListType(vals[1], "string")
+
+	index := int(vals[0].(Int))
+	list := vals[1].(*Cell).Values
+
+	return list[index]
+}
+
+func builtinListJoin(env *Environment, vals []Value) Value {
+	AssetArgListType(NewCell(vals), "list")
 
 	joinedVals := []Value{}
 	for _, v := range vals {
@@ -471,6 +483,36 @@ func builtinListJoin(env *Environment, vals []Value) Value {
 	}
 
 	return NewCell(joinedVals)
+}
+
+func builtinListSlice(env *Environment, vals []Value) Value {
+	if len(vals) == 2 {
+		AssetArgType(vals[0], "integer")
+		AssetArgType(vals[1], "list")
+
+		start := int(vals[0].(Int))
+		list := vals[1].(*Cell).Values
+
+		return NewCell(list[start:])
+	}
+
+	AssetArgsSize(vals, 3, 3)
+	AssetArgType(vals[0], "integer")
+	AssetArgType(vals[1], "integer")
+	AssetArgType(vals[2], "list")
+
+	start := int(vals[0].(Int))
+	end := int(vals[1].(Int))
+	list := vals[2].(*Cell).Values
+
+	return NewCell(list[start:end])
+}
+
+func builtinListLength(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 1, 1)
+	AssetArgType(vals[0], "list")
+
+	return NewInt(int64(len(vals[0].(*Cell).Values)))
 }
 
 // Math

@@ -1,81 +1,132 @@
 (set null? (fn (x) (eql "null" (type x))))
-(set list? (fn (x) (eql "cell" (type x))))
+(set list? (fn (x) (eql "list" (type x))))
 (set symbol? (fn (x) (eql "symbol" (type x))))
 (set vector? (fn (x) (eql "vector" (type x))))
 
+(set empty? (fn (x) (eq 0 (list-length x))))
+
 (set not (fn (x) (eq x false)))
 
-(set first (fn (x) (list-nth 0)))
-(set second (fn (x) (list-nth 1)))
-(set head (fn (x) (list-nth 0)))
+(set first (fn (x) (list-nth 0 x)))
+(set second (fn (x) (list-nth 1 x)))
+(set head (fn (x)
+  (cond
+    (empty? x) null
+    else (list-nth 0 x))))
 (set tail (fn (x) (list-slice 1 x)))
 
-(set cons list-prepend)
 (set length list-length)
 (set append list-join)
 
 (set if (macro (test then else)
-  (list 'cond (list test then) (list 'else else))))
+  (list 'cond test then 'else else)))
 
-(define or (macro (& args)
-  (if (null? args)
+(set or (macro (& args)
+  (if (empty? args)
     false
-    (cons 'cond (map list args)))))
+    (cons 'cond args))))
 
 (set and (macro (& args)
   (cond
-    ((null? args) true)
-    ((null? (tail args)) (head args))
-    (else (list 'if (head args) (cons 'and (tail args)) false)))))
+    (empty? args) true
+    (empty? (tail args)) (head args)
+    else (list 'if (head args) (cons 'and (tail args)) false))))
 
-(set quasiquote
-  (macro (x)
-    (set constant? (fn (exp)
-      (if (cell? exp)
-        (eq (head exp) 'quote)
-        (not (symbol? exp)))))
+(set qq-expand (fn (exp)
+  (set constant? (fn (exp)
+    (if (list? exp)
+      (eq (head exp) 'quote)
+      (not (symbol? exp)))))
 
-    (set combine-skeletons (fn (left right exp)
-      (cond
-       ((and (constant? left) (constant? right))
-        (if (and (eql (eval left) (head exp)) (eql (eval right) (tail exp)))
-          (list 'quote exp)
-          (list 'quote (cons (eval left) (eval right)))))
-       ((null? right) (list 'list left))
-       ((and (list? right) (eq (head right) 'list))
-        (cons 'list (cons left (tail right))))
-       (else (list 'cons left right)))))
+  (set combine-skeletons (fn (left right exp)
+    (cond
+      (and (constant? left) (constant? right))
+      (if (and (eql (eval left) (head exp)) (eql (eval right) (tail exp)))
+        (list 'quote exp)
+        (list 'quote (cons (eval left) (eval right))))
+      (null? right) (list 'list left)
+      (and (list? right) (eq (head right) 'list))
+      (cons 'list (cons left (tail right)))
+      else (list 'cons left right))))
 
-    (set expand-quasiquote (fn (exp nesting)
-      (cond
-       ((vector? exp)
-        (list 'apply 'vec (expand-quasiquote (vector->list exp) nesting)))
-       ((not (list? exp))
-        (if (constant? exp) exp (list 'quote exp)))
-       ((and (eq (head exp) 'unquote) (eq (length exp) 2))
-        (if (eq nesting 0)
-          (second exp)
-          (combine-skeletons ''unquote (expand-quasiquote (tail exp) (- nesting 1)) exp)))
-       ((and (eq (head exp) 'quasiquote) (eq (length exp) 2))
-        (combine-skeletons ''quasiquote (expand-quasiquote (tail exp) (+ nesting 1)) exp))
-       ((and (list? (head exp))
-          (eq (head (head exp)) 'unquote-splicing)
-          (eq (length (head exp)) 2))
-        (if (eq nesting 0)
-          (list 'append (second (first exp))
-            (expand-quasiquote (tail exp) nesting))
-          (combine-skeletons (expand-quasiquote (head exp) (- nesting 1))
-            (expand-quasiquote (tail exp) nesting)
-            exp)))
-       (else (combine-skeletons
-               (expand-quasiquote (head exp) nesting)
-               (expand-quasiquote (tail exp) nesting)
-               exp)))))
+  (set expand-quasiquote (fn (exp nesting)
+    (cond
+      (vector? exp)
+      (list 'apply 'vec (expand-quasiquote (vector->list exp) nesting))
+      (not (list? exp))
+      (if (constant? exp) exp (list 'quote exp))
+      (and (eq (head exp) 'unquote) (eq (length exp) 2))
+      (if (eq nesting 0)
+        (second exp)
+        (combine-skeletons ''unquote (expand-quasiquote (tail exp) (- nesting 1)) exp))
+      (and (eq (head exp) 'quasiquote) (eq (length exp) 2))
+      (combine-skeletons ''quasiquote (expand-quasiquote (tail exp) (+ nesting 1)) exp)
+      (and (list? (head exp))
+        (eq (head (head exp)) 'unquote-splicing)
+        (eq (length (head exp)) 2))
+      (if (eq nesting 0)
+        (list 'append (second (first exp))
+          (expand-quasiquote (tail exp) nesting))
+        (combine-skeletons (expand-quasiquote (head exp) (- nesting 1))
+          (expand-quasiquote (tail exp) nesting)
+          exp))
+      else (combine-skeletons
+              (expand-quasiquote (head exp) nesting)
+              (expand-quasiquote (tail exp) nesting)
+              exp))))
 
-    (expand-quasiquote x 0)))
+    (expand-quasiquote exp 0)))
 
-(set unquote (fn (& _) (error "unqote called outside of quasiquote")))
-(set unquote-splicing (fn (& _) (error "unqote-splicing called outside of quasiquote")))
+(set quasiquote (macro (exp) (qq-expand exp)))
+
+
+;(set qq-expand-list (fn (exp)
+;  (cond
+;    (and (list? exp) (empty? exp))
+;      exp
+;    (list? exp)
+;      (cond
+;        (eq 'unquote (head exp))
+;          (list 'list (second exp))
+;        (eq 'unquote-splicing (head exp))
+;          (second exp)
+;        (eq 'quasiquote (head exp))
+;          (qq-expand-list (qq-expand (second exp)))
+;        else
+;          (list 'append (qq-expand-list (head exp)) (qq-expand (tail exp))))
+;    else
+;      (list 'list exp))))
+;
+;(set qq-expand (fn (exp)
+;  (cond
+;    (and (list? exp) (empty? exp))
+;      exp
+;    (vector? exp)
+;      (list 'apply 'vec (expand-quasiquote (vector->list exp) nesting))
+;    (list? exp)
+;      (cond
+;        (eq 'unquote (head exp))
+;          (second exp)
+;        (eq 'unquote-splicing (head exp))
+;          (error "illegal unquote-splicing at quasiquote root")
+;        (eq 'quasiquote (head exp))
+;          (qq-expand (qq-expand (second exp)))
+;        else
+;          (list 'append (qq-expand-list (head exp)) (qq-expand (tail exp))))
+;    else exp)))
+;
+;(set quasiquote (macro (exp)
+;  (qq-expand exp)))
+
+(set unquote (fn (& _) (error "unquote called outside of quasiquote")))
+(set unquote-splicing (fn (& _) (error "unquote-splicing called outside of quasiquote")))
+
+(set name "name")
+(set args (list "a" "r" "g"))
+(set body (list "b" "o" "d"))
+(write *stdout* (pr-str (qq-expand '(do (set ,name (macro ,args ,@body)) ',name))))
+(write *stdout* "\n\n")
+(exit)
 
 (set defmacro
   (macro (name args & body)

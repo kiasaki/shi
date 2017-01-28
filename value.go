@@ -225,7 +225,7 @@ func (v *Builtin) Call(env *Environment, args []Value) Value {
 	} else {
 		evaluatedArgs := []Value{}
 		for _, arg := range args {
-			evaluatedArgs = append(evaluatedArgs, FullEval(env, arg))
+			evaluatedArgs = append(evaluatedArgs, Eval(env, arg))
 		}
 		return (v.Fn)(env, evaluatedArgs)
 	}
@@ -253,15 +253,15 @@ func NewClosure(env *Environment, argNames []string, body []Value) Value {
 }
 
 func (v *Closure) Call(env *Environment, args []Value) Value {
-	evalEnv := NewEnvironment(v.Env)
-	argNamesLeft := buildCallEnv(true, evalEnv, env, v.ArgNames, args)
+	argsEnv := NewEnvironment(v.Env)
+	argNamesLeft := buildCallEnv(true, env, argsEnv, v.ArgNames, args)
 
 	if len(argNamesLeft) == 0 {
 		// Are we done filling required args? Then apply function
-		return Eval(evalEnv, NewCell(append([]Value{NewSym("do")}, v.Body...)))
+		return Eval(argsEnv, NewCell(append([]Value{NewSym("do")}, v.Body...)))
 	} else {
 		// Create a new closure for the partially applied function
-		return NewClosure(evalEnv, argNamesLeft, v.Body)
+		return NewClosure(argsEnv, argNamesLeft, v.Body)
 	}
 }
 
@@ -287,7 +287,7 @@ func NewMacro(argNames []string, body []Value) Value {
 
 func (v *Macro) Call(env *Environment, args []Value) Value {
 	evalEnv := NewEnvironment(env)
-	argNamesLeft := buildCallEnv(false, evalEnv, env, v.ArgNames, args)
+	argNamesLeft := buildCallEnv(false, env, evalEnv, v.ArgNames, args)
 
 	if len(argNamesLeft) > 0 {
 		panic(fmt.Sprintf("macro called without all arguments, wanted '%s', got '%s'", v.ArgNames, args))
