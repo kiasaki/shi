@@ -1,66 +1,93 @@
 # Shi Lisp (シ)
 
-Built-in
-
 ```
 *version*
 *args*
 *shi-path*
-*stdin*
-*stdout*
-*stderr*
 *filename*
 *dirname*
 
-(type val)
-(quote val) !todo!move-to-core
-(fn (args...) body...)
-(apply fn args)
-(do expr...) !todo!move-to-core
+; Language
+fn
+do
+cond
+loop
+recur
+quote
+macro
 
-(error message)
-(trap-error try-fn catch-fn)
+; Basics
+*print-readably*
+pr-str
+type
+parse
+eval
+load
 
-(environment parent)
-(root-environment)
-(environment-set *env*? k v)
-(environment-get *env*? k)
-(environment-root *env*)
-(eval env val)
-(parse name? contents)
-(parse-file file-name) !todo!move-to-core
-(load file-name-or-module) !todo!move-to-core
+; Errors
+error
+trap-error
 
-(sym str)
+; Environments
+environment
+root-environment
+environment-set
+environment-get
+environment-root
 
-(str vals...)
-(str-join sep strs)
+; Compare
+eq
+eql
 
-(+ x y)
-(- x y)
-(/ x y)
-(* x y)
+; Symbols
+sym
 
-(list vals...) !todo!move-to-core
+; Strings
+str
+str-join
 
-(write stream string) !todo!move-to-core
-(read-line stream) !todo!move-to-core
-(print-str val)
-```
+; Lists
+cons
+list
+list-nth
+list-join
+list-slice
+list-length
 
-Core
+; Math
++
+-
+/
+*
+mod
 
-```
+; Streams / IO
+read
+write
+*stdin*
+*stdout*
+*stderr*
+
+; OS
+exit
+
+; Prelude
+def
+set!
+defn
+defmacro
+if
+when
+let
 *in*
 *out*
-*macros*
-*packages*
-*package*
-
-set-global
-set
-value
-
+read-line
+newline
+pr
+prn
 print
 println
+
+repl
+repl-run
 ```
