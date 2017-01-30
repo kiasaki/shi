@@ -30,6 +30,7 @@ func main() {
 	env.Set("*version*", NewString(ShiVersion))
 	env.Set("*args*", StringArrayToList(os.Args))
 	env.Set("*shi-path*", StringArrayToList(shiPaths))
+	env.Set("*module*", NewSym("user"))
 
 	BuiltinLoad(env, []Value{NewString("shi::core")})
 
@@ -40,7 +41,7 @@ func main() {
 	} else if stat, err := os.Stdin.Stat(); err == nil && stat.Size() > 0 {
 		run(env, "stdin", os.Stdin)
 	} else {
-		BuiltinLoad(env, []Value{NewString("shi::repl")})
+		BuiltinLoad(env, []Value{NewString("shi:repl")})
 		Eval(env, Parse("repl", "(repl-run)")[0])
 	}
 }

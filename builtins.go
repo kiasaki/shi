@@ -250,11 +250,11 @@ func builtinLoadHelper(env *Environment, file string) bool {
 	targetModule := filepath.Join(file, filepath.Base(targetFile))
 
 	if _, err := os.Stat(targetFile); err == nil {
-		// Try file
+		// Try file (i.e. ./util.shi or shi/core.shi)
 		Eval(env, ParseFile(targetFile))
 		return true
 	} else if _, err := os.Stat(targetModule); err == nil {
-		// Try module
+		// Try module folder (i.e. shi/core/core.shi)
 		Eval(env, ParseFile(targetModule))
 		return true
 	}
@@ -290,7 +290,7 @@ func builtinLoad(env *Environment, vals []Value) Value {
 		panic("load: expected '*shi-path*' to be a string list")
 	}
 	shiPaths := shiPathsVal.(*Cell).Values
-	targetModule := strings.Replace(targetFile, "::", string(os.PathSeparator), -1)
+	targetModule := strings.Replace(targetFile, ":", string(os.PathSeparator), -1)
 
 	for _, p := range shiPaths {
 		if builtinLoadHelper(env, filepath.Join(string(p.(String)), targetModule)) {
