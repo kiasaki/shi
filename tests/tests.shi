@@ -1,1 +1,6 @@
-(write *out* "tests")
+(defmacro test (x)
+  (list 'if x '(write ".")
+      (list 'do '(write "\nFailed: ") (list 'prn x) '(exit 1))))
+
+(test (eq 1 1))
+(test (not false))

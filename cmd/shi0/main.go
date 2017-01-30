@@ -120,7 +120,7 @@ var Prelude = strings.Replace(`
 (environment-set def (macro (name value)
   (list 'environment-set '(environment-root) name value)))
 
-(environment-set set! (macro (name value)
+(environment-set set (macro (name value)
   (list 'environment-set name value)))
 
 (def defn (macro (name args & exprs)
@@ -172,7 +172,7 @@ var Prelude = strings.Replace(`
   (newline))
 
 (defn print (v)
-  (set! *print-readably* false)
+  (set *print-readably* false)
   (write (pr-str v)))
 
 (defn println (v)

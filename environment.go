@@ -49,7 +49,7 @@ func (e *Environment) Get(k string) Value {
 	} else if e.parent != nil {
 		return e.parent.Get(k)
 	} else {
-		return NULL
+		return nil
 	}
 }
 

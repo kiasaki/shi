@@ -228,6 +228,10 @@ func builtinParse(env *Environment, vals []Value) Value {
 }
 
 func builtinEval(env *Environment, vals []Value) Value {
+	if len(vals) == 1 {
+		return Eval(env, vals[0])
+	}
+
 	AssetArgsSize(vals, 2, 2)
 
 	e := Eval(env, vals[0])
@@ -377,7 +381,11 @@ func builtinEnvironmentGet(env *Environment, vals []Value) Value {
 		k = vals[0]
 	}
 
-	return e.Get(k.String())
+	ret := e.Get(k.String())
+	if ret == nil {
+		return NULL
+	}
+	return ret
 }
 
 func builtinEnvironmentRoot(env *Environment, vals []Value) Value {
@@ -397,6 +405,14 @@ func builtinEnvironmentRoot(env *Environment, vals []Value) Value {
 func builtinEq(env *Environment, vals []Value) Value {
 	AssetArgsSize(vals, 2, 2)
 
+	if vals[0].Type() == "symbol" && vals[1].Type() == "symbol" {
+		if vals[0].(*Sym).Name == vals[1].(*Sym).Name {
+			return TRUE
+		} else {
+			return FALSE
+		}
+	}
+
 	// TODO use Comparable interface
 	if vals[0] == vals[1] {
 		return TRUE
@@ -409,7 +425,7 @@ func builtinEq(env *Environment, vals []Value) Value {
 func builtinEql(env *Environment, vals []Value) Value {
 	AssetArgsSize(vals, 2, 2)
 
-	if vals[0] == vals[1] {
+	if vals[0].String() == vals[1].String() {
 		return TRUE
 	} else {
 		return FALSE
@@ -493,6 +509,9 @@ func builtinListSlice(env *Environment, vals []Value) Value {
 		start := int(vals[0].(Int))
 		list := vals[1].(*Cell).Values
 
+		if start >= len(list) {
+			return NewCell([]Value{})
+		}
 		return NewCell(list[start:])
 	}
 

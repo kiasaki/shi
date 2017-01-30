@@ -1,17 +1,18 @@
 ; REPL
 
-(set repl (fn (env)
-  (write *out* "> ")
+(defn repl (env)
+  (write "shi> ")
 
   (trap-error
     (fn ()
-      (println (eval env (parse "repl" (read-line *stdin*)))))
+      (println (eval env (parse (read-line)))))
     (fn (e)
-      (write *out* e)))
+      (prn e)))
 
-  (repl env)))
+  (repl env))
 
-(set repl-run (fn ()
-  (write *out* (str "Shi Lisp v" *version* " REPL\n"))
-  (set env (root-environment))
+(defn repl-run ()
+  (write (str "Shi Lisp v" *version* " REPL\n"))
+  (write "Type (exit) to quit. Or press Ctrl-C\n")
+  (def env (root-environment))
   (repl env))

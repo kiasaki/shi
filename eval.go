@@ -26,7 +26,7 @@ func Eval(env *Environment, v Value) Value {
 	switch t := v.(type) {
 	case *Sym:
 		symValue := env.Get(t.Name)
-		if symValue == NULL {
+		if symValue == nil {
 			panic(fmt.Sprintf("eval: unbound symbol '%s'", t.Name))
 		}
 		return symValue

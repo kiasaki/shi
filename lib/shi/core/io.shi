@@ -1,9 +1,27 @@
 (set *in* *stdin*)
 (set *out* *stdout*)
 
-(set print (fn (& v)
-  (write *out* (apply print-str v))))
+(defn read-line ()
+  (loop (line "")
+    (def c (read))
+    (cond
+      (eq c "\n") line
+      else (recur (str line c)))))
 
-(set println (fn (& v)
-  (write *out* (apply print-str v))
-  (write *out* "\n")))
+(defn newline ()
+  (write "\n"))
+
+(defn pr (v)
+  (write (pr-str v)))
+
+(defn prn (v)
+  (pr v)
+  (newline))
+
+(defn print (v)
+  (set *print-readably* false)
+  (write (pr-str v)))
+
+(defn println (v)
+  (print v)
+  (newline))

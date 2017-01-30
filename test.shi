@@ -1,3 +1,0 @@
-(environment-set m (macro (x) `(list ,x ,x ,x)))
-
-(write (str (print-str (m 3) "\n")))
