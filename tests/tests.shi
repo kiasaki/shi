@@ -1,6 +1,19 @@
 (defmacro test (x)
-  (list 'if x '(write ".")
-      (list 'do '(write "\nFailed: ") (list 'prn x) '(exit 1))))
+  `(if ,x (write ".")
+      (do
+        (newline)
+        (pr "Failed: ") (println ',x)
+        (pr "Result: ") (println ,x)
+        (exit 1))))
 
+; Equality
 (test (eq 1 1))
+(test (eq 'name 'name))
 (test (not false))
+(test (not null))
+(test (not (eql 'name 'name)))
+(test (eql [1 2 3] [1 2 3]))
+(test (eql {:a 1} {:a 1}))
+
+(newline)
+(prn "Success")

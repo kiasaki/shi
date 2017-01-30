@@ -18,6 +18,9 @@ func AssetArgsSize(vals []Value, min int, max int) {
 }
 
 func AssetArgType(v Value, typeName string) {
+	if v == nil {
+		panic(fmt.Sprintf("got unbound value, expected %s", typeName))
+	}
 	if v.Type() != typeName {
 		panic(fmt.Sprintf(
 			"expected argument to be of type '%s', got '%s' in `%s'",

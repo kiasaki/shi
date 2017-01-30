@@ -171,6 +171,51 @@ func (v *Vector) ReadableString() string {
 	return printValues("[", "]", true, v.Values)
 }
 
+// Map
+// =======================
+
+type Map struct {
+	Values map[string]Value
+}
+
+func NewMapFromList(values []Value) Value {
+	mapValues := map[string]Value{}
+	if len(values)%2 != 0 {
+		panic("map constructor: given odd number of key/values " + NewVector(values).String())
+	}
+	for i := 0; i < len(values); i += 2 {
+		switch v := values[i].(type) {
+		case String:
+			mapValues[string(v)] = values[i+1]
+		case *Sym:
+			mapValues[v.Name] = values[i+1]
+		default:
+			panic("map constructor: given a key that isn't a string or symbol: " + v.String())
+		}
+	}
+	return &Map{Values: mapValues}
+}
+
+func (*Map) Type() string {
+	return "map"
+}
+
+func (v *Map) asString(readably bool) string {
+	values := []Value{}
+	for k, v := range v.Values {
+		values = append(values, NewSym(":"+k), v)
+	}
+	return printValues("{", "}", false, values)
+}
+
+func (v *Map) String() string {
+	return v.asString(false)
+}
+
+func (v *Map) ReadableString() string {
+	return v.asString(true)
+}
+
 // Stream
 // =======================
 

@@ -16,6 +16,7 @@ const (
 	TokenEOF
 
 	TokenIdentifier
+	TokenKeyword
 
 	TokenStringLiteral
 	TokenIntegerLiteral
@@ -31,6 +32,8 @@ const (
 	TokenCloseParen
 	TokenOpenSquare
 	TokenCloseSquare
+	TokenOpenCurly
+	TokenCloseCurly
 )
 
 type Token struct {
@@ -137,8 +140,18 @@ func lexWhiteSpace(l *Lexer) stateFn {
 		return lexOpenParen
 	case r == ')':
 		return lexCloseParen
+	case r == '[':
+		return lexOpenSquare
+	case r == ']':
+		return lexCloseSquare
+	case r == '{':
+		return lexOpenCurly
+	case r == '}':
+		return lexCloseCurly
 	case r == '"':
 		return lexString
+	case r == ':':
+		return lexKeyword
 	case r == '\'':
 		return lexQuote
 	case r == '`':
@@ -199,6 +212,15 @@ func lexString(l *Lexer) stateFn {
 	return lexWhiteSpace
 }
 
+func lexKeyword(l *Lexer) stateFn {
+	for r := l.next(); isAlphaNumeric(r); r = l.next() {
+	}
+	l.backup()
+
+	l.emit(TokenKeyword)
+	return lexWhiteSpace
+}
+
 func lexOpenParen(l *Lexer) stateFn {
 	l.emit(TokenOpenParen)
 	return lexWhiteSpace
@@ -206,6 +228,26 @@ func lexOpenParen(l *Lexer) stateFn {
 
 func lexCloseParen(l *Lexer) stateFn {
 	l.emit(TokenCloseParen)
+	return lexWhiteSpace
+}
+
+func lexOpenSquare(l *Lexer) stateFn {
+	l.emit(TokenOpenSquare)
+	return lexWhiteSpace
+}
+
+func lexCloseSquare(l *Lexer) stateFn {
+	l.emit(TokenCloseSquare)
+	return lexWhiteSpace
+}
+
+func lexOpenCurly(l *Lexer) stateFn {
+	l.emit(TokenOpenCurly)
+	return lexWhiteSpace
+}
+
+func lexCloseCurly(l *Lexer) stateFn {
+	l.emit(TokenCloseCurly)
 	return lexWhiteSpace
 }
 

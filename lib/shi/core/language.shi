@@ -11,8 +11,6 @@
 
 (set empty? (fn (x) (eq 0 (list-length x))))
 
-(set not (fn (x) (eq x false)))
-
 (set first (fn (x) (list-nth 0 x)))
 (set second (fn (x) (list-nth 1 x)))
 (set head (fn (x)
@@ -27,16 +25,18 @@
 (set if (macro (test then else)
   (list 'cond test then 'else else)))
 
-(set or (macro (& args)
-  (if (empty? args)
-    false
-    (cons 'cond args))))
-
 (set and (macro (& args)
   (cond
     (empty? args) true
     (empty? (tail args)) (head args)
     else (list 'if (head args) (cons 'and (tail args)) false))))
+
+(set not (fn (x)
+  (if (eq x false)
+      true
+      (if (eq x null)
+          true
+          x))))
 
 ;(set qq-expand (fn (exp)
 ;  (set constant? (fn (exp)
@@ -136,7 +136,19 @@
   `(do (set ,name (fn ,args ,@body))
        ',name))
 
-(defn not (x) (eq x nil))
+(set *gensym-counter* 0)
+(defn gensym ()
+  (set *gensym-counter* (+ 1 *gensym-counter*))
+  (sym (str "gs#" (pr-str *gensym-counter*))))
+
+(defmacro or (& args)
+  (if (empty? args)
+    false
+    (let (x (gensym))
+      `(do
+          (set ,x ,(first args))
+          (if ,x ,x (apply or ,(tail args)))))))
+
 (defn identity (x) x)
 
 (defn > (x y) (< y x))

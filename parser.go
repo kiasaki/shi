@@ -30,6 +30,8 @@ func LexerAST(l *Lexer, values []Value, state ReadState) []Value {
 			default:
 				values = append(values, NewSym(token.Value))
 			}
+		case TokenKeyword:
+			values = append(values, NewString(token.Value[1:]))
 		case TokenStringLiteral:
 			v, err := strconv.Unquote(token.Value)
 			if err != nil {
@@ -54,6 +56,22 @@ func LexerAST(l *Lexer, values []Value, state ReadState) []Value {
 		case TokenCloseParen:
 			if state != ReadStateList {
 				panic(fmt.Sprint("read: unexpected ')' token"))
+			}
+			return values
+		case TokenOpenSquare:
+			value := NewVector(LexerAST(l, []Value{}, ReadStateList))
+			values = append(values, value)
+		case TokenCloseSquare:
+			if state != ReadStateList {
+				panic(fmt.Sprint("read: unexpected ']' token"))
+			}
+			return values
+		case TokenOpenCurly:
+			value := NewMapFromList(LexerAST(l, []Value{}, ReadStateList))
+			values = append(values, value)
+		case TokenCloseCurly:
+			if state != ReadStateList {
+				panic(fmt.Sprint("read: unexpected '}' token"))
 			}
 			return values
 		case TokenQuote:
