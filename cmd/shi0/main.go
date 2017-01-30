@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	. "github.com/kiasaki/shi"
+	. "github.com/shi-lang/shi"
 )
 
 const ShiVersion = "0.1.0"
