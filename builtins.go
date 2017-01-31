@@ -43,9 +43,10 @@ func AddBuiltins(env *Environment) {
 	// Environments
 	AddBuiltin(env, "environment", builtinEnvironment)
 	AddBuiltin(env, "root-environment", builtinRootEnvironment)
-	AddBuiltinSpecial(env, "environment-set", builtinEnvironmentSet)
+	AddBuiltin(env, "environment-set", builtinEnvironmentSet)
 	AddBuiltin(env, "environment-get", builtinEnvironmentGet)
 	AddBuiltin(env, "environment-root", builtinEnvironmentRoot)
+	AddBuiltin(env, "environment-symbols", builtinEnvironmentSymbols)
 
 	// Compare
 	AddBuiltin(env, "eq", builtinEq)
@@ -57,6 +58,7 @@ func AddBuiltins(env *Environment) {
 	// Strings
 	AddBuiltin(env, "str", builtinStr)
 	AddBuiltin(env, "str-join", builtinStrJoin)
+	AddBuiltin(env, "str-split", builtinStrSplit)
 
 	// Lists
 	AddBuiltin(env, "list", builtinList)
@@ -70,6 +72,7 @@ func AddBuiltins(env *Environment) {
 	AddBuiltin(env, "vec->list", builtinVecToList)
 
 	// Math
+	AddBuiltin(env, "<", builtinSmaller)
 	AddBuiltin(env, "+", builtinPlus)
 	AddBuiltin(env, "-", builtinMinus)
 	AddBuiltin(env, "/", builtinQuotient)
@@ -92,6 +95,14 @@ func AddBuiltins(env *Environment) {
 
 func builtinFn(env *Environment, vals []Value) Value {
 	AssetArgsSize(vals, 1, -1)
+
+	name := ""
+	if vals[0].Type() == "symbol" {
+		name = vals[0].(*Sym).Name
+		AssetArgsSize(vals, 2, -1)
+		vals = vals[1:]
+	}
+
 	AssetArgType(vals[0], "list")
 	AssetArgListType(vals[0], "symbol")
 
@@ -99,7 +110,7 @@ func builtinFn(env *Environment, vals []Value) Value {
 	for _, arg := range vals[0].(*Cell).Values {
 		argNames = append(argNames, arg.String())
 	}
-	return NewClosure(env, argNames, vals[1:])
+	return NewClosure(env, name, argNames, vals[1:])
 }
 
 func builtinDo(env *Environment, vals []Value) Value {
@@ -182,6 +193,14 @@ func builtinQuote(env *Environment, vals []Value) Value {
 
 func builtinMacro(env *Environment, vals []Value) Value {
 	AssetArgsSize(vals, 1, -1)
+
+	name := ""
+	if vals[0].Type() == "symbol" {
+		name = vals[0].(*Sym).Name
+		AssetArgsSize(vals, 2, -1)
+		vals = vals[1:]
+	}
+
 	AssetArgType(vals[0], "list")
 	AssetArgListType(vals[0], "symbol")
 
@@ -190,7 +209,7 @@ func builtinMacro(env *Environment, vals []Value) Value {
 		argNames = append(argNames, arg.String())
 	}
 
-	return NewMacro(argNames, vals[1:])
+	return NewMacro(name, argNames, vals[1:])
 }
 
 // Basics
@@ -354,17 +373,21 @@ func builtinEnvironmentSet(env *Environment, vals []Value) Value {
 	var v = vals[1]
 
 	if len(vals) == 3 {
-		givenEnv := Eval(env, vals[0])
+		givenEnv := vals[0]
 		AssetArgType(givenEnv, "environment")
 		e = givenEnv.(*Environment)
 		k = vals[1]
 		v = vals[2]
 	}
-	AssetArgType(k, "symbol")
+	AssetArgType(k, "symbol|string")
 
-	valueToSet := Eval(env, v)
-	e.Set(k.String(), valueToSet)
-	return valueToSet
+	switch kvalue := k.(type) {
+	case String:
+		e.Set(string(kvalue), v)
+	case *Sym:
+		e.Set(kvalue.Name, v)
+	}
+	return v
 }
 
 func builtinEnvironmentGet(env *Environment, vals []Value) Value {
@@ -401,6 +424,16 @@ func builtinEnvironmentRoot(env *Environment, vals []Value) Value {
 	return e.Root()
 }
 
+func builtinEnvironmentSymbols(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 0, 1)
+	e := env
+	if len(vals) > 0 && vals[0].Type() == "environment" {
+		e = vals[0].(*Environment)
+	}
+
+	return NewCell(e.Symbols())
+}
+
 // Compare
 // =======================
 
@@ -409,18 +442,14 @@ func builtinEq(env *Environment, vals []Value) Value {
 	AssetArgsSize(vals, 2, 2)
 
 	if vals[0].Type() == "symbol" && vals[1].Type() == "symbol" {
-		if vals[0].(*Sym).Name == vals[1].(*Sym).Name {
-			return TRUE
-		} else {
-			return FALSE
-		}
+		return NewBool(vals[0].(*Sym).Name == vals[1].(*Sym).Name)
 	}
 
 	// TODO use Comparable interface
-	if vals[0] == vals[1] {
-		return TRUE
+	if a, ok := vals[0].(Comparable); ok {
+		return NewBool(a.Compare(vals[1]) == 0)
 	} else {
-		return FALSE
+		return NewBool(vals[0] == vals[1])
 	}
 }
 
@@ -428,11 +457,7 @@ func builtinEq(env *Environment, vals []Value) Value {
 func builtinEql(env *Environment, vals []Value) Value {
 	AssetArgsSize(vals, 2, 2)
 
-	if vals[0].String() == vals[1].String() {
-		return TRUE
-	} else {
-		return FALSE
-	}
+	return NewBool(vals[0].String() == vals[1].String())
 }
 
 // Symbols
@@ -449,7 +474,20 @@ func builtinSym(env *Environment, vals []Value) Value {
 // =======================
 
 func builtinStr(env *Environment, vals []Value) Value {
-	AssetArgListType(NewCell(vals), "string")
+	for i, v := range vals {
+		switch vv := v.(type) {
+		case String:
+			vals[i] = NewString(string(vv))
+		case *Sym:
+			vals[i] = NewString(vv.Name)
+		case Int:
+			vals[i] = NewString(vv.String())
+		case Float:
+			vals[i] = NewString(vv.String())
+		default:
+			panic("str: can't use type '" + v.Type() + "' argument to str")
+		}
+	}
 	return builtinStrJoin(env, []Value{NewString(""), NewCell(vals)})
 }
 
@@ -467,6 +505,21 @@ func builtinStrJoin(env *Environment, vals []Value) Value {
 		str += string(v.(String))
 	}
 	return NewString(str)
+}
+
+func builtinStrSplit(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 2, 2)
+	AssetArgType(vals[0], "string")
+	AssetArgType(vals[1], "string")
+
+	sep := string(vals[0].(String))
+	str := string(vals[1].(String))
+
+	parts := []Value{}
+	for _, v := range strings.Split(str, sep) {
+		parts = append(parts, NewString(v))
+	}
+	return NewCell(parts)
 }
 
 // Lists
@@ -545,6 +598,28 @@ func builtinVecToList(env *Environment, vals []Value) Value {
 
 // Math
 // =======================
+
+func builtinSmaller(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 2, 2)
+	AssetArgType(vals[0], "integer|float")
+	AssetArgType(vals[1], "integer|float")
+
+	var x, y float64
+	switch v := vals[0].(type) {
+	case Int:
+		x = float64(v)
+	case Float:
+		x = float64(v)
+	}
+	switch v := vals[1].(type) {
+	case Int:
+		y = float64(v)
+	case Float:
+		y = float64(v)
+	}
+
+	return NewBool(x < y)
+}
 
 func valueAsFloat(v Value) float64 {
 	switch v.Type() {

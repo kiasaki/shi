@@ -1,7 +1,7 @@
-; REPL
+(module shi:repl)
 
 (defn repl (env)
-  (write "shi> ")
+  (write (str "shi(" (environment-get env '*module*) ")> "))
 
   (trap-error
     (fn ()
@@ -14,5 +14,6 @@
 (defn repl-run ()
   (write (str "Shi Lisp v" *version* " REPL\n"))
   (write "Type (exit) to quit. Or press Ctrl-C\n")
-  (def env (root-environment))
+  (set env (environment *env*))
+  (environment-set env '*module* 'global)
   (repl env))

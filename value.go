@@ -20,6 +20,10 @@ type Callable interface {
 	Call(*Environment, []Value) Value
 }
 
+type Comparable interface {
+	Compare(b Value) int
+}
+
 // Sym
 // =======================
 
@@ -61,6 +65,14 @@ type Bool bool
 
 var TRUE = Bool(true)
 var FALSE = Bool(false)
+
+func NewBool(b bool) Value {
+	if b {
+		return TRUE
+	} else {
+		return FALSE
+	}
+}
 
 func (Bool) Type() string {
 	return "boolean"
@@ -108,6 +120,27 @@ func (v Int) String() string {
 	return strconv.FormatInt(int64(v), 10)
 }
 
+func (av Int) Compare(bv Value) int {
+	var a = float64(av)
+	var b float64
+	switch bb := bv.(type) {
+	case Float:
+		b = float64(bb)
+	case Int:
+		b = float64(bb)
+	default:
+		return -1
+	}
+
+	if a == b {
+		return 0
+	} else if a > b {
+		return 1
+	} else {
+		return -1
+	}
+}
+
 // Float
 // =======================
 
@@ -123,6 +156,27 @@ func (Float) Type() string {
 
 func (v Float) String() string {
 	return strconv.FormatFloat(float64(v), 'f', -1, 64)
+}
+
+func (av Float) Compare(bv Value) int {
+	var a = float64(av)
+	var b float64
+	switch bb := bv.(type) {
+	case Float:
+		b = float64(bb)
+	case Int:
+		b = float64(bb)
+	default:
+		return -1
+	}
+
+	if a == b {
+		return 0
+	} else if a > b {
+		return 1
+	} else {
+		return -1
+	}
 }
 
 // Cell
@@ -288,13 +342,14 @@ func (v *Builtin) String() string {
 // =======================
 
 type Closure struct {
+	Name     string
 	Env      *Environment
 	ArgNames []string
 	Body     []Value
 }
 
-func NewClosure(env *Environment, argNames []string, body []Value) Value {
-	return &Closure{Env: env, ArgNames: argNames, Body: body}
+func NewClosure(env *Environment, name string, argNames []string, body []Value) Value {
+	return &Closure{Env: env, Name: name, ArgNames: argNames, Body: body}
 }
 
 func (v *Closure) Call(env *Environment, args []Value) Value {
@@ -306,7 +361,7 @@ func (v *Closure) Call(env *Environment, args []Value) Value {
 		return Eval(argsEnv, NewCell(append([]Value{NewSym("do")}, v.Body...)))
 	} else {
 		// Create a new closure for the partially applied function
-		return NewClosure(argsEnv, argNamesLeft, v.Body)
+		return NewClosure(argsEnv, v.Name, argNamesLeft, v.Body)
 	}
 }
 
@@ -315,19 +370,24 @@ func (*Closure) Type() string {
 }
 
 func (v *Closure) String() string {
-	return fmt.Sprintf("#<closure %p>", v)
+	if v.Name != "" {
+		return fmt.Sprintf("#<closure %s>", v.Name)
+	} else {
+		return fmt.Sprintf("#<closure %p>", v)
+	}
 }
 
 // Macro
 // =======================
 
 type Macro struct {
+	Name     string
 	ArgNames []string
 	Body     []Value
 }
 
-func NewMacro(argNames []string, body []Value) Value {
-	return &Macro{ArgNames: argNames, Body: body}
+func NewMacro(name string, argNames []string, body []Value) Value {
+	return &Macro{Name: name, ArgNames: argNames, Body: body}
 }
 
 func (v *Macro) Call(env *Environment, args []Value) Value {
@@ -350,5 +410,9 @@ func (*Macro) Type() string {
 }
 
 func (v *Macro) String() string {
-	return fmt.Sprintf("#<macro %p>", v)
+	if v.Name != "" {
+		return fmt.Sprintf("#<macro %s>", v.Name)
+	} else {
+		return fmt.Sprintf("#<macro %p>", v)
+	}
 }

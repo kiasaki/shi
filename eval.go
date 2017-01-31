@@ -32,6 +32,12 @@ func Eval(env *Environment, v Value) Value {
 		return symValue
 	case *Cell:
 		return EvalList(env, t)
+	case *Vector:
+		vals := []Value{}
+		for _, v := range t.Values {
+			vals = append(vals, Eval(env, v))
+		}
+		return NewVector(vals)
 	default:
 		return t
 	}
@@ -68,6 +74,13 @@ func buildCallEnv(doEval bool, callerEnv, argsEnv *Environment, wantedArgs []str
 			argsEnv.Set(argNames[0], eval(arg))
 			argNames = argNames[1:]
 		}
+	}
+
+	if len(argNames) == 2 && argNames[0] == "&" {
+		// there is a rest arg but not enough args for it
+		// still mark as complete and pass an empty list
+		rest = argNames[1]
+		argNames = []string{}
 	}
 
 	if rest != "" {

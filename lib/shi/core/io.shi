@@ -1,3 +1,5 @@
+(module shi:core:io)
+
 (def *in* *stdin*)
 (def *out* *stdout*)
 

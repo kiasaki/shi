@@ -21,7 +21,7 @@ func AssetArgType(v Value, typeName string) {
 	if v == nil {
 		panic(fmt.Sprintf("got unbound value, expected %s", typeName))
 	}
-	if v.Type() != typeName {
+	if !strings.Contains(typeName, v.Type()) {
 		panic(fmt.Sprintf(
 			"expected argument to be of type '%s', got '%s' in `%s'",
 			typeName, v.Type(), v.String(),
@@ -42,7 +42,7 @@ func AssetArgListType(v Value, typeName string) {
 
 func AssetArgListTypes(v Value, typeNames string) {
 	for _, v := range v.(*Cell).Values {
-		if strings.Contains(v.Type(), typeNames) {
+		if !strings.Contains(typeNames, v.Type()) {
 			panic(fmt.Sprintf(
 				"expected argument to be of type '%s', got '%s' in `%s'",
 				typeNames, v.Type(), v.String(),

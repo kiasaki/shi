@@ -34,18 +34,17 @@ func main() {
 
 	BuiltinLoad(env, []Value{NewString("shi:core")})
 
-	userEnv := NewEnvironment(env)
-	userEnv.Set("*module*", NewSym("user"))
+	env.Set("*module*", NewSym("global"))
 
 	if len(os.Args) > 1 {
 		for _, arg := range os.Args[1:] {
 			Eval(env, ParseFile(arg))
 		}
 	} else if stat, err := os.Stdin.Stat(); err == nil && stat.Size() > 0 {
-		run(userEnv, "stdin", os.Stdin)
+		run(env, "stdin", os.Stdin)
 	} else {
 		BuiltinLoad(env, []Value{NewString("shi:repl")})
-		Eval(userEnv, Parse("repl", "(repl-run)")[0])
+		Eval(env, NewCell([]Value{NewSym("shi:repl:repl-run")}))
 	}
 }
 

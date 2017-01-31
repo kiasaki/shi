@@ -148,9 +148,9 @@ func ParseFile(name string) Value {
 		NewCell(append([]Value{
 			NewSym("fn"),
 			NewCell([]Value{}),
-			NewCell([]Value{NewSym("environment-set"), NewSym("*filename*"), NewString(filepath.Base(absPath))}),
-			NewCell([]Value{NewSym("environment-set"), NewSym("*dirname*"), NewString(filepath.Dir(absPath))}),
-			NewCell([]Value{NewSym("environment-set"), NewSym("*module*"), NewCell([]Value{
+			NewCell([]Value{NewSym("environment-set"), NewString("*filename*"), NewString(filepath.Base(absPath))}),
+			NewCell([]Value{NewSym("environment-set"), NewString("*dirname*"), NewString(filepath.Dir(absPath))}),
+			NewCell([]Value{NewSym("environment-set"), NewString("*module*"), NewCell([]Value{
 				NewSym("quote"),
 				NewSym("global"),
 			})}),

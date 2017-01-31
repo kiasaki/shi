@@ -56,3 +56,11 @@ func (e *Environment) Get(k string) Value {
 func (e *Environment) Set(k string, v Value) {
 	e.values[k] = v
 }
+
+func (e *Environment) Symbols() []Value {
+	syms := []Value{}
+	for k, _ := range e.values {
+		syms = append(syms, NewSym(k))
+	}
+	return syms
+}
