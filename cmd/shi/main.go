@@ -23,7 +23,8 @@ func StringArrayToList(vs []string) Value {
 func main() {
 	shiPaths := strings.Split(os.Getenv("SHI_PATH"), ":")
 	if len(shiPaths) == 1 && shiPaths[0] == "" {
-		shiPaths = []string{".", "./lib", "/usr/share/shi"}
+		goPathLib := os.Getenv("GOPATH") + "/src/github.com/shi-lang/shi/lib"
+		shiPaths = []string{".", "./lib", "/usr/share/shi/lib", goPathLib}
 	}
 
 	env := NewRootEnvironment()
