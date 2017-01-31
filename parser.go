@@ -132,6 +132,16 @@ func ParseFile(name string) Value {
 	}
 	file.Close()
 
+	if len(contents) > 2 && string(contents)[0:2] == "#!" {
+		// Skip shebang
+		for i := 0; true; i++ {
+			if contents[i] == byte('\n') {
+				contents = contents[i:]
+				break
+			}
+		}
+	}
+
 	topLevel := Parse(filepath.Base(absPath), string(contents))
 
 	return NewCell(append([]Value{
@@ -140,7 +150,10 @@ func ParseFile(name string) Value {
 			NewCell([]Value{}),
 			NewCell([]Value{NewSym("environment-set"), NewSym("*filename*"), NewString(filepath.Base(absPath))}),
 			NewCell([]Value{NewSym("environment-set"), NewSym("*dirname*"), NewString(filepath.Dir(absPath))}),
-			NewCell([]Value{NewSym("environment-set"), NewSym("*module*"), NewSym("global")}),
+			NewCell([]Value{NewSym("environment-set"), NewSym("*module*"), NewCell([]Value{
+				NewSym("quote"),
+				NewSym("global"),
+			})}),
 		}, topLevel...)),
 	}))
 }

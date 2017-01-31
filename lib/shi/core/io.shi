@@ -1,5 +1,5 @@
-(set *in* *stdin*)
-(set *out* *stdout*)
+(def *in* *stdin*)
+(def *out* *stdout*)
 
 (defn read-line ()
   (loop (line "")

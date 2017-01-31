@@ -1,37 +1,37 @@
-(environment-set def (macro (name value)
+(environment-set (environment-root) def (macro (name value)
   (list 'environment-set '(environment-root) name value)))
 
-(environment-set set (macro (name value)
+(def set (macro (name value)
   (list 'environment-set name value)))
 
-(set null? (fn (x) (eq "null" (type x))))
-(set list? (fn (x) (eq "list" (type x))))
-(set symbol? (fn (x) (eq "symbol" (type x))))
-(set vector? (fn (x) (eq "vector" (type x))))
+(def null? (fn (x) (eq "null" (type x))))
+(def list? (fn (x) (eq "list" (type x))))
+(def symbol? (fn (x) (eq "symbol" (type x))))
+(def vector? (fn (x) (eq "vector" (type x))))
 
-(set empty? (fn (x) (eq 0 (list-length x))))
+(def empty? (fn (x) (eq 0 (list-length x))))
 
-(set first (fn (x) (list-nth 0 x)))
-(set second (fn (x) (list-nth 1 x)))
-(set head (fn (x)
+(def first (fn (x) (list-nth 0 x)))
+(def second (fn (x) (list-nth 1 x)))
+(def head (fn (x)
   (cond
     (empty? x) null
     else (list-nth 0 x))))
-(set tail (fn (x) (list-slice 1 x)))
+(def tail (fn (x) (list-slice 1 x)))
 
-(set length list-length)
-(set append list-join)
+(def length list-length)
+(def append list-join)
 
-(set if (macro (test then else)
+(def if (macro (test then else)
   (list 'cond test then 'else else)))
 
-(set and (macro (& args)
+(def and (macro (& args)
   (cond
     (empty? args) true
     (empty? (tail args)) (head args)
     else (list 'if (head args) (cons 'and (tail args)) false))))
 
-(set not (fn (x)
+(def not (fn (x)
   (if (eq x false)
       true
       (if (eq x null)
@@ -103,7 +103,7 @@
     else
       (list 'list exp))))
 
-(set qq-expand (fn (exp)
+(def qq-expand (fn (exp)
   (cond
     (and (list? exp) (empty? exp))
       exp
@@ -121,19 +121,19 @@
           (list 'append (qq-expand-list (head exp)) (qq-expand (tail exp))))
     else exp)))
 
-(set quasiquote (macro (exp)
+(def quasiquote (macro (exp)
   (qq-expand exp)))
 
-(set unquote (fn (& _) (error "unquote called outside of quasiquote")))
-(set unquote-splicing (fn (& _) (error "unquote-splicing called outside of quasiquote")))
+(def unquote (fn (& _) (error "unquote called outside of quasiquote")))
+(def unquote-splicing (fn (& _) (error "unquote-splicing called outside of quasiquote")))
 
-(set defmacro
+(def defmacro
   (macro (name args & body)
-    `(do (set ,name (macro ,args ,@body))
+    `(do (def ,name (macro ,args ,@body))
          ',name)))
 
 (defmacro defn (name args & body)
-  `(do (set ,name (fn ,args ,@body))
+  `(do (def ,name (fn ,args ,@body))
        ',name))
 
 (set *gensym-counter* 0)

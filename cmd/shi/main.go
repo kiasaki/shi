@@ -30,19 +30,21 @@ func main() {
 	env.Set("*version*", NewString(ShiVersion))
 	env.Set("*args*", StringArrayToList(os.Args))
 	env.Set("*shi-path*", StringArrayToList(shiPaths))
-	env.Set("*module*", NewSym("user"))
 
-	BuiltinLoad(env, []Value{NewString("shi::core")})
+	BuiltinLoad(env, []Value{NewString("shi:core")})
+
+	userEnv := NewEnvironment(env)
+	userEnv.Set("*module*", NewSym("user"))
 
 	if len(os.Args) > 1 {
 		for _, arg := range os.Args[1:] {
 			Eval(env, ParseFile(arg))
 		}
 	} else if stat, err := os.Stdin.Stat(); err == nil && stat.Size() > 0 {
-		run(env, "stdin", os.Stdin)
+		run(userEnv, "stdin", os.Stdin)
 	} else {
 		BuiltinLoad(env, []Value{NewString("shi:repl")})
-		Eval(env, Parse("repl", "(repl-run)")[0])
+		Eval(userEnv, Parse("repl", "(repl-run)")[0])
 	}
 }
 
@@ -53,7 +55,6 @@ func run(env *Environment, name string, input io.ReadWriteCloser) {
 		fmt.Printf("error: %s\n", err)
 		os.Exit(1)
 	}
-	input.Close()
 
 	// Parse and eval all top level instruction
 	toplevel := Parse(name, string(contents))
