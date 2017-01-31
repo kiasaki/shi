@@ -5,9 +5,20 @@
   (list 'environment-set name value)))
 
 (def null? (fn (x) (eq "null" (type x))))
+(def bool? (fn (x) (eq "boolean" (type x))))
+(def true? (fn (x) (eq true x)))
+(def false? (fn (x) (eq false x)))
 (def list? (fn (x) (eq "list" (type x))))
-(def symbol? (fn (x) (eq "symbol" (type x))))
-(def vector? (fn (x) (eq "vector" (type x))))
+(def vec? (fn (x) (eq "vector" (type x))))
+(def sym? (fn (x) (eq "symbol" (type x))))
+(def int? (fn (x) (eq "integer" (type x))))
+(def float? (fn (x) (eq "float" (type x))))
+(def stream? (fn (x) (eq "stream" (type x))))
+(def map? (fn (x) (eq "map" (type x))))
+(def builtin? (fn (x) (eq "builtin" (type x))))
+(def closure? (fn (x) (eq "closure" (type x))))
+(def macro? (fn (x) (eq "macro" (type x))))
+(def environment? (fn (x) (eq "environment" (type x))))
 
 (def empty? (fn (x) (eq 0 (list-length x))))
 
@@ -24,6 +35,10 @@
 
 (def if (macro (test then else)
   (list 'cond test then 'else else)))
+
+(def cons (fn (x l) (list-join (list x) (if (null? l) '() l))))
+
+(def apply (macro (f args) (cons f args)))
 
 (def and (macro (& args)
   (cond
@@ -42,7 +57,7 @@
 ;  (set constant? (fn (exp)
 ;    (if (list? exp)
 ;      (eq (head exp) 'quote)
-;      (not (symbol? exp)))))
+;      (not (sym? exp)))))
 ;
 ;  (set combine-skeletons (fn (left right exp)
 ;    (cond
@@ -57,8 +72,8 @@
 ;
 ;  (set expand-quasiquote (fn (exp nesting)
 ;    (cond
-;      (vector? exp)
-;      (list 'apply 'vec (expand-quasiquote (vector->list exp) nesting))
+;      (vec? exp)
+;      (list 'apply 'vec (expand-quasiquote (vec->list exp) nesting))
 ;      (not (list? exp))
 ;      (if (constant? exp) exp (list 'quote exp))
 ;      (and (eq (head exp) 'unquote) (eq (length exp) 2))
@@ -107,8 +122,8 @@
   (cond
     (and (list? exp) (empty? exp))
       exp
-    (vector? exp)
-      (list 'apply 'vec (expand-quasiquote (vector->list exp) nesting))
+    (vec? exp)
+      (list 'apply 'vec (qq-expand (vec->list exp) nesting))
     (list? exp)
       (cond
         (eq 'unquote (head exp))

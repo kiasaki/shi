@@ -59,12 +59,15 @@ func AddBuiltins(env *Environment) {
 	AddBuiltin(env, "str-join", builtinStrJoin)
 
 	// Lists
-	AddBuiltin(env, "cons", builtinCons)
 	AddBuiltin(env, "list", builtinList)
 	AddBuiltin(env, "list-nth", builtinListNth)
 	AddBuiltin(env, "list-join", builtinListJoin)
 	AddBuiltin(env, "list-slice", builtinListSlice)
 	AddBuiltin(env, "list-length", builtinListLength)
+
+	// Vectors
+	AddBuiltin(env, "vec", builtinVec)
+	AddBuiltin(env, "vec->list", builtinVecToList)
 
 	// Math
 	AddBuiltin(env, "+", builtinPlus)
@@ -469,13 +472,6 @@ func builtinStrJoin(env *Environment, vals []Value) Value {
 // Lists
 // =======================
 
-func builtinCons(env *Environment, vals []Value) Value {
-	AssetArgsSize(vals, 2, 2)
-	AssetArgType(vals[1], "list")
-
-	return NewCell(append([]Value{vals[0]}, vals[1].(*Cell).Values...))
-}
-
 func builtinList(env *Environment, vals []Value) Value {
 	return NewCell(vals)
 }
@@ -532,6 +528,19 @@ func builtinListLength(env *Environment, vals []Value) Value {
 	AssetArgType(vals[0], "list")
 
 	return NewInt(int64(len(vals[0].(*Cell).Values)))
+}
+
+// Vec
+// =======================
+
+func builtinVec(env *Environment, vals []Value) Value {
+	return NewVector(vals)
+}
+
+func builtinVecToList(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 1, 1)
+	AssetArgType(vals[0], "vector")
+	return NewCell(vals[0].(*Vector).Values)
 }
 
 // Math
