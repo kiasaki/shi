@@ -34,6 +34,26 @@ go get github.com/shi-lang/shi
 go install github.com/shi-lang/shi/cmd/shi
 ```
 
+You should now be able to use the REPL:
+
+```
+$ shi
+Shi Lisp v0.1.0 REPL
+Type (exit) to quit. Or press Ctrl-C
+shi> (+ 2 2)
+4
+shi> (exit)
+$
+```
+
+Or run code:
+
+```
+$ shi hello-world.shi
+Hello world!
+$
+```
+
 ## Documentation
 
 Visit [https://www.shi-lang.org/docs/](https://www.shi-lang.org/docs/).
