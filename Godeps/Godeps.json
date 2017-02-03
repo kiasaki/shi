@@ -1,0 +1,15 @@
+{
+	"ImportPath": "github.com/shi-lang/shi",
+	"GoVersion": "go1.7",
+	"GodepVersion": "v75",
+	"Packages": [
+		"./..."
+	],
+	"Deps": [
+		{
+			"ImportPath": "github.com/husobee/vestigo",
+			"Comment": "v1.0.1-72-gda51f43",
+			"Rev": "da51f43dc6e24dc473cb47ff98bafedd7ee1fa9d"
+		}
+	]
+}
