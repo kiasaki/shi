@@ -232,6 +232,10 @@ type Map struct {
 	Values map[string]Value
 }
 
+func NewMap(values map[string]Value) Value {
+	return &Map{Values: values}
+}
+
 func NewMapFromList(values []Value) Value {
 	mapValues := map[string]Value{}
 	if len(values)%2 != 0 {

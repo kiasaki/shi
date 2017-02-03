@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	. "github.com/shi-lang/shi"
+
+	_ "github.com/shi-lang/shi/lib/shi/http"
 )
 
 const ShiVersion = "0.1.0"

@@ -8,6 +8,12 @@ import (
 	"strings"
 )
 
+var registeredModules = []func(*Environment){}
+
+func RegisterNativeModule(fn func(*Environment)) {
+	registeredModules = append(registeredModules, fn)
+}
+
 func AddBuiltin(env *Environment, name string, fn func(*Environment, []Value) Value) {
 	env.Set(name, NewBuiltin(name, BuiltinFn(fn)))
 }
@@ -88,6 +94,10 @@ func AddBuiltins(env *Environment) {
 
 	// OS
 	AddBuiltin(env, "exit", builtinExit)
+
+	for _, registeredModule := range registeredModules {
+		registeredModule(env)
+	}
 }
 
 // Language
