@@ -22,7 +22,17 @@ func EvalList(env *Environment, v *Cell) Value {
 	}
 }
 
+var EvalStack = []Value{}
+
 func Eval(env *Environment, v Value) Value {
+	EvalStack = append(EvalStack, v)
+	defer func() {
+		if r := recover(); r != nil {
+			panic(r)
+		}
+		EvalStack = EvalStack[:len(EvalStack)-1]
+	}()
+
 	switch t := v.(type) {
 	case *Sym:
 		symValue := env.Get(t.Name)

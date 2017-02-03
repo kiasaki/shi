@@ -6,8 +6,9 @@
 (environment-set (environment-root) 'def (macro (name value)
   (list 'do
     (list 'set 'gs#def-name (list 'sym (list 'str '*module* ":" (list 'quote name))))
-    (list 'environment-set '(environment-root) 'gs#def-name value)
-    (list 'environment-set (list 'quote name) value))))
+    (list 'set 'gs#def-value value)
+    (list 'environment-set '(environment-root) 'gs#def-name 'gs#def-value)
+    (list 'environment-set (list 'quote name) 'gs#def-value))))
 
 (def def- set)
 

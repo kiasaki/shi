@@ -5,7 +5,7 @@
 
 (defn read-line ()
   (loop (line "")
-    (def c (read))
+    (set c (read))
     (cond
       (eq c "\n") line
       else (recur (str line c)))))

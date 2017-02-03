@@ -29,6 +29,16 @@ func main() {
 		shiPaths = []string{".", "./lib", "/usr/share/shi/lib", goPathLib}
 	}
 
+	defer func() {
+		fmt.Printf("Untrapped error!\n\n")
+		if r := recover(); r != nil {
+			for i := len(EvalStack) - 1; i >= 0; i-- {
+				fmt.Printf("%d> %s\n", i+1, EvalStack[i])
+			}
+		}
+		os.Exit(1)
+	}()
+
 	env := NewRootEnvironment()
 	env.Set("*version*", NewString(ShiVersion))
 	env.Set("*args*", StringArrayToList(os.Args))

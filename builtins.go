@@ -77,6 +77,11 @@ func AddBuiltins(env *Environment) {
 	AddBuiltin(env, "vec", builtinVec)
 	AddBuiltin(env, "vec->list", builtinVecToList)
 
+	// Map
+	AddBuiltin(env, "map", builtinMap)
+	AddBuiltin(env, "map-get", builtinMapGet)
+	AddBuiltin(env, "map-set", builtinMapSet)
+
 	// Math
 	AddBuiltin(env, "<", builtinSmaller)
 	AddBuiltin(env, "+", builtinPlus)
@@ -604,6 +609,31 @@ func builtinVecToList(env *Environment, vals []Value) Value {
 	AssetArgsSize(vals, 1, 1)
 	AssetArgType(vals[0], "vector")
 	return NewCell(vals[0].(*Vector).Values)
+}
+
+// Maps
+// =======================
+
+func builtinMap(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 0, 0)
+	return NewMap(map[string]Value{})
+}
+
+func builtinMapGet(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 2, 2)
+	AssetArgType(vals[0], "map")
+	AssetArgType(vals[1], "string")
+	return vals[0].(*Map).Values[string(vals[1].(String))]
+}
+
+func builtinMapSet(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 3, 3)
+	AssetArgType(vals[0], "map")
+	AssetArgType(vals[1], "string")
+
+	m := NewMap(vals[0].(*Map).Values).(*Map)
+	m.Values[string(vals[1].(String))] = vals[2]
+	return m
 }
 
 // Math
