@@ -4,10 +4,14 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
+	"net/http"
 	"os"
 	"strings"
 
 	. "github.com/shi-lang/shi"
+
+	_ "net/http/pprof"
 
 	_ "github.com/shi-lang/shi/lib/shi/http"
 )
@@ -23,6 +27,10 @@ func StringArrayToList(vs []string) Value {
 }
 
 func main() {
+	go func() {
+		log.Println(http.ListenAndServe("localhost:8080", nil))
+	}()
+
 	shiPaths := strings.Split(os.Getenv("SHI_PATH"), ":")
 	if len(shiPaths) == 1 && shiPaths[0] == "" {
 		goPathLib := os.Getenv("GOPATH") + "/src/github.com/shi-lang/shi/lib"

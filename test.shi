@@ -1,3 +1,10 @@
+(sleep 1)
+(prn "1")
+(sleep 1)
+(prn "2")
+(sleep 1)
+(prn "3")
+(exit)
 (module test)
 (import 'shi:http)
 

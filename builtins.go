@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 var registeredModules = []func(*Environment){}
@@ -98,6 +99,7 @@ func AddBuiltins(env *Environment) {
 	env.Set("*stderr*", NewStream(StreamDirOut, os.Stderr))
 
 	// OS
+	AddBuiltin(env, "sleep", builtinSleep)
 	AddBuiltin(env, "exit", builtinExit)
 
 	for _, registeredModule := range registeredModules {
@@ -768,6 +770,22 @@ func builtinWrite(env *Environment, vals []Value) Value {
 
 // OS
 // =======================
+
+func builtinSleep(env *Environment, vals []Value) Value {
+	AssetArgsSize(vals, 1, 1)
+	AssetArgType(vals[0], "integer|float")
+
+	var sleepSeconds time.Duration
+	switch v := vals[0].(type) {
+	case Int:
+		sleepSeconds = time.Duration(v * 1000)
+	case Float:
+		sleepSeconds = time.Duration(v * 1000)
+	}
+
+	time.Sleep(sleepSeconds * time.Millisecond)
+	return NULL
+}
 
 func builtinExit(env *Environment, vals []Value) Value {
 	AssetArgsSize(vals, 0, 1)
