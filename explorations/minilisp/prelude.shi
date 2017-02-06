@@ -1,3 +1,13 @@
-(defun list (x . y) (cons x y))
+(def list (fn (x . y) (cons x y)))
 
-(println "pre")
+(def newline (fn ()
+  (write "\n")))
+
+(def print (fn (x)
+  (write (pr-str x))))
+
+(def println (fn (x)
+  (print x)
+  (newline)))
+
+(println '(1 "2" (3)))

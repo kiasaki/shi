@@ -1,5 +1,5 @@
 CC=cc
-CFLAGS=-std=c99 -g -O2 -Wall
+CFLAGS=-std=c99 -ggdb -O2 -Wall
 
 .PHONY: clean test
 
@@ -11,3 +11,7 @@ clean:
 
 test: shi
 	@./test.sh
+
+format:
+	clang-format shi.c >shi.c.new
+	mv shi.c.new shi.c
