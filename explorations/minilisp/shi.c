@@ -886,6 +886,17 @@ static Obj *prim_setcar(void *root, Obj **env, Obj **list) {
   return (*args)->car;
 }
 
+// (do body ...)
+static Obj *prim_do(void *root, Obj **env, Obj **list) {
+  return progn(root, env, list);
+}
+
+// (apply fn arg1 arg2 ...)
+static Obj *prim_apply(void *root, Obj **env, Obj **list) {
+  Obj *values = eval_list(root, env, list);
+  return apply(root, env, &values->car, &values->cdr);
+}
+
 // (while cond expr ...)
 static Obj *prim_while(void *root, Obj **env, Obj **list) {
   if (length(*list) < 2) error("Malformed while");
@@ -1021,15 +1032,51 @@ static Obj *prim_eq(void *root, Obj **env, Obj **list) {
   return values->car == values->cdr->car ? True : Nil;
 }
 
-static Obj *prim_do(void *root, Obj **env, Obj **list) {
-  return progn(root, env, list);
-}
-
-static Obj *prim_apply(void *root, Obj **env, Obj **list) {
+// (type expr)
+static Obj *prim_type(void *root, Obj **env, Obj **list) {
+  if (length(*list) != 1) error("Malformed type");
   Obj *values = eval_list(root, env, list);
-  return apply(root, env, &values->car, &values->cdr);
+
+  char *name;
+
+  switch (values->car->type) {
+    case TTRUE:
+      name = "true";
+      break;
+    case TNIL:
+      name = "nil";
+      break;
+    case TINT:
+      name = "int";
+      break;
+    case TSTR:
+      name = "str";
+      break;
+    case TCELL:
+      name = "list";
+      break;
+    case TSYMBOL:
+      name = "sym";
+      break;
+    case TPRIMITIVE:
+      name = "prim";
+      break;
+    case TFUNCTION:
+      name = "fn";
+      break;
+    case TMACRO:
+      name = "macro";
+      break;
+    default:
+      error("type: unknown object type", values->car->type);
+  }
+
+  DEFINE1(s);
+  *s = make_string(root, name);
+  return *s;
 }
 
+// (write "str")
 static Obj *prim_write(void *root, Obj **env, Obj **list) {
   if (length(*list) != 1) error("Malformed write");
 
@@ -1081,6 +1128,7 @@ static void define_primitives(void *root, Obj **env) {
   add_primitive(root, env, "=", prim_num_eq);
   add_primitive(root, env, "eq", prim_eq);
 
+  add_primitive(root, env, "type", prim_type);
   add_primitive(root, env, "pr-str", prim_pr_str);
   add_primitive(root, env, "write", prim_write);
 }
