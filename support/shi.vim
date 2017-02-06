@@ -14,94 +14,44 @@ setlocal iskeyword=33,35-37,42,43,45,47,48-57,60-64,124,@,_
 syntax match ethSymbol "\<\k\+\>"
 
 " builtin
-syntax keyword shiBuiltin fn
-syntax keyword shiBuiltin do
-syntax keyword shiBuiltin cond
-syntax keyword shiBuiltin loop
-syntax keyword shiBuiltin recur
-syntax keyword shiBuiltin quote
 syntax keyword shiBuiltin macro
-syntax keyword shiBuiltin type
-syntax keyword shiBuiltin parse
-syntax keyword shiBuiltin eval
-syntax keyword shiBuiltin load
-syntax keyword shiBuiltin error
-syntax keyword shiBuiltin trap-error
-syntax keyword shiBuiltin environment
-syntax keyword shiBuiltin root-environment
-syntax keyword shiBuiltin environment-get
-syntax keyword shiBuiltin environment-set
-syntax keyword shiBuiltin environment-root
-syntax keyword shiBuiltin eq
-syntax keyword shiBuiltin eql
-syntax keyword shiBuiltin sym
-syntax keyword shiBuiltin str
-syntax keyword shiBuiltin str-nth
-syntax keyword shiBuiltin str-join
-syntax keyword shiBuiltin str-slice
-syntax keyword shiBuiltin str-length
-syntax keyword shiBuiltin str-split
-syntax keyword shiBuiltin list
-syntax keyword shiBuiltin list-nth
-syntax keyword shiBuiltin list-join
-syntax keyword shiBuiltin list-slice
-syntax keyword shiBuiltin list-length
-syntax keyword shiBuiltin vec
-syntax keyword shiBuiltin vec-nth
-syntax keyword shiBuiltin vec-join
-syntax keyword shiBuiltin vec-slice
-syntax keyword shiBuiltin vec-length
-syntax keyword shiBuiltin empty-map
-syntax keyword shiBuiltin map-get
-syntax keyword shiBuiltin map-set
-syntax keyword shiBuiltin map-delete
-syntax keyword shiBuiltin map-keys
-syntax keyword shiBuiltin read
-syntax keyword shiBuiltin write
-syntax keyword shiBuiltin open
-syntax keyword shiBuiltin close
-syntax keyword shiBuiltin exit
-
-" builtin functions
-syntax keyword shiBuiltin get
-syntax keyword shiBuiltin set
 syntax keyword shiBuiltin def
-syntax keyword shiBuiltin defn
-syntax keyword shiBuiltin defmacro
+syntax keyword shiBuiltin set
+syntax keyword shiBuiltin fn
+syntax keyword shiBuiltin if cond
+syntax keyword shiBuiltin do
+syntax keyword shiBuiltin while
+syntax keyword shiBuiltin defn defmacro
 syntax keyword shiBuiltin let
-syntax keyword shiBuiltin if
-syntax keyword shiBuiltin or
-syntax keyword shiBuiltin and
-
-syntax keyword shiBuiltin module
-syntax keyword shiBuiltin import
 
 " builtin operators
 syntax keyword shiBuiltin "+"
 syntax keyword shiBuiltin "-"
 syntax keyword shiBuiltin "*"
 syntax keyword shiBuiltin "/"
-syntax keyword shiBuiltin "%"
+syntax keyword shiBuiltin "mod"
 syntax keyword shiBuiltin "<"
 syntax keyword shiBuiltin "<="
 syntax keyword shiBuiltin ">"
 syntax keyword shiBuiltin ">="
-syntax keyword shiBuiltin "=="
-syntax keyword shiBuiltin "!="
+syntax keyword shiBuiltin "="
+syntax keyword shiBuiltin "/="
 
 " stdlib shi
-syntax keyword shiFunc gensym unquote unquote-splicing quasiquote
-syntax keyword shiFunc read-line
-syntax keyword shiFunc newline
-syntax keyword shiFunc pr
-syntax keyword shiFunc prn
-syntax keyword shiFunc print
-syntax keyword shiFunc println
-syntax keyword shiFunc null? bool? true? false? list? vec? sym? int? float? stream? map? builtin? closure? macro? environment?
-syntax keyword shiFunc empty?
-syntax keyword shiFunc first second head tail length append
-syntax keyword shiFunc identity
-syntax keyword shiFunc not
+syntax keyword shiFunc quote gensym macro-expand
+syntax keyword shiFunc apply
+syntax keyword shiFunc list
+syntax keyword shiFunc type
+syntax keyword shiFunc true? nil? int? str? cons? list? sym? prim? atom?
+syntax keyword shiFunc apply call identity
+syntax keyword shiFunc cons car cdr setcar setcdr
+syntax keyword shiFunc first rest caar cadr second cdar cddr
+syntax keyword shiFunc caaar caadr cadar caddr third cdaar cdadr cddar cdddr
+syntax keyword shiFunc length reverse nth empty?
+syntax keyword shiFunc eq eql not when unless and or
+syntax keyword shiFunc unquote unquote-splicing quasiquote
+syntax keyword shiFunc pr-str write getenv open close readb writeb exit rand millis
+syntax keyword shiFunc newline pr prn print println
 
 syntax match shiKeyword ":\<\k\+\>"
 
@@ -110,9 +60,9 @@ syntax region shiString start=/"/ skip=/\\"/ end=/"/ contains=shiStringEscape,@S
 
 syntax match shiNumber "\v<[-+]?%(0|[1-9]\d*)\.?\d*>"
 
-syntax keyword shiBoolean null true false
+syntax keyword shiBoolean nil t
 
-syntax match shiVarArg "&"
+syntax match shiVarArg "."
 
 syntax match shiComment ";.*$" contains=shiCommentTodo,@Spell
 syntax keyword shiCommentTodo contained FIXME TODO HACK FIXME: TODO: HACK:

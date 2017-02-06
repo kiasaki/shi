@@ -72,13 +72,15 @@ run set 11 '(def x 7) (set x 11) x'
 run set 17 '(set + 17) +'
 
 # Conditionals
-run if a "(if 1 'a)"
-run if '()' "(if () 'a)"
-run if a "(if 1 'a 'b)"
-run if a "(if 0 'a 'b)"
-run if a "(if 'x 'a 'b)"
-run if b "(if () 'a 'b)"
-run if c "(if () 'a 'b 'c)"
+run if1 a "(if 1 'a)"
+run if2 '()' "(if () 'a)"
+run if3 a "(if 1 'a 'b)"
+run if4 a "(if 0 'a 'b)"
+run if5 a "(if 'x 'a 'b)"
+run if6 b "(if () 'a 'b)"
+run if7 c "(if () 'a 'b 'c)"
+run if8 d "(if () 'a () 'c 'd)"
+run if9 '()' "(if () 'a () 'b () 'c)"
 
 # Numeric comparisons
 run = t '(= 3 3)'
@@ -96,7 +98,7 @@ run gensym '()' "(eq (gensym) 'G__0)"
 run gensym '()' '(eq (gensym) (gensym))'
 run gensym t '((fn (x) (eq x x)) (gensym))'
 
-# Functions
+# functions
 run fn '<function>' '(fn (x) x)'
 run fn t '((fn () t))'
 run fn 9 '((fn (x) (+ x x x)) 3)'
@@ -106,7 +108,11 @@ run args 15 '(def f (fn (x y z) (+ x y z))) (f 3 5 7)'
 run restargs '(3 5 7)' '(def f (fn (x . y) (cons x y))) (f 3 5 7)'
 run restargs '(3)'    '(def f (fn (x . y) (cons x y))) (f 3)'
 
-# Lexical closures
+run do1 '()' '(do)'
+run do2 '1' '(do 1)'
+run do3 '2' '(do 1 2)'
+
+# lexical closures
 run closure 3 '(def call (fn (f) ((fn (var) (f)) 5)))
   ((fn (var) (call (fn () var))) 3)'
 
@@ -152,5 +158,31 @@ run string-escape '"a\n\t\"sd"' '"a\n\t\"sd"'
 # type
 run type-int 'int' '(type 1)'
 run type-str 'str' '(type "123")'
-run type-str 'nil' '(type nil)'
-run type-str 'list' '(type (cons 1 nil))'
+run type-nil 'nil' '(type nil)'
+run type-cons 'cons' '(type (cons 1 2))'
+run type-list1 'list' '(type (cons 1 nil))'
+run type-list2 'list' '(type (cons 1 (cons 2 nil)))'
+
+# list fns
+run length0 '0' "(length nil)"
+run length1 '0' "(length '())"
+run length1 '1' "(length '(1))"
+run length3 '3' "(length '(1 2 3))"
+run reverse0 '()' "(reverse '())"
+run reverse1 '(1)' "(reverse '(1))"
+run reverse3 '(3 2 1)' "(reverse '(1 2 3))"
+run nth0 '1' "(nth '(1 2 3) 0)"
+run nth2 '3' "(nth '(1 2 3) 2)"
+run empty?1 't' "(empty? nil)"
+run empty?2 't' "(empty? '())"
+run empty?3 '()' "(empty? '(1))"
+
+# conditionals
+run not1 '()' "(not t)"
+run not2 '()' "(not 10)"
+run not3 't' "(not nil)"
+run when1 '2' "(when t 1 2)"
+run when2 '()' "(when nil 1 2)"
+run unless1 '2' "(unless nil 1 2)"
+run unless2 '()' "(unless t 1 2)"
+

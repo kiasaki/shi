@@ -514,9 +514,23 @@ static Obj *read_quote(void *root) {
   return *tmp;
 }
 
+static Obj *read_quasiquote(void *root) {
+  DEFINE2(sym, tmp);
+  *sym = intern(root, "quasiquote");
+  *tmp = read_expr(root);
+  *tmp = cons(root, tmp, &Nil);
+  *tmp = cons(root, sym, tmp);
+  return *tmp;
+}
+
 static Obj *read_unquote(void *root) {
   DEFINE2(sym, tmp);
-  *sym = intern(root, "unquote");
+  if (peek() == '@') {
+    getc(current_file);
+    *sym = intern(root, "unquote-splicing");
+  } else {
+    *sym = intern(root, "unquote");
+  }
   *tmp = read_expr(root);
   *tmp = cons(root, tmp, &Nil);
   *tmp = cons(root, sym, tmp);
@@ -594,6 +608,7 @@ static Obj *read_expr(void *root) {
     if (c == ')') return Cparen;
     if (c == '.') return Dot;
     if (c == '\'') return read_quote(root);
+    if (c == '`') return read_quasiquote(root);
     if (c == ',') return read_unquote(root);
     if (c == '"') return read_string(root);
     if (isdigit(c)) return make_int(root, read_number(c - '0'));
@@ -732,6 +747,7 @@ static Obj *push_env(void *root, Obj **env, Obj **vars, Obj **vals) {
 // Evaluates the list elements from head and returns the last return value.
 static Obj *progn(void *root, Obj **env, Obj **list) {
   DEFINE2(lp, r);
+  *r = Nil;
   for (*lp = *list; *lp != Nil; *lp = (*lp)->cdr) {
     *r = (*lp)->car;
     *r = eval(root, env, r);
@@ -1008,11 +1024,22 @@ static Obj *prim_if(void *root, Obj **env, Obj **list) {
   *cond = (*list)->car;
   *cond = eval(root, env, cond);
   if (*cond != Nil) {
+    // Test succeded, return then branch and skip evaluatin else
     *then = (*list)->cdr->car;
     return eval(root, env, then);
   }
   *els = (*list)->cdr->cdr;
-  return *els == Nil ? Nil : progn(root, env, els);
+  if (*els == Nil) {
+    // Return nil when else is missing
+    return Nil;
+  }
+  if ((*els)->cdr == Nil) {
+    // Return else value if it's last in args (if test then else)
+    *then = (*els)->car;
+    return eval(root, env, then);
+  }
+  // Re-enter if with else branch as start (if a ar b br ...)
+  return prim_if(root, env, els);
 }
 
 // (= <integer> <integer>)
@@ -1053,7 +1080,11 @@ static Obj *prim_type(void *root, Obj **env, Obj **list) {
       name = "str";
       break;
     case TCELL:
-      name = "list";
+      if (values->car->cdr != Nil && values->car->cdr->type != TCELL) {
+        name = "cons";
+      } else {
+        name = "list";
+      }
       break;
     case TSYMBOL:
       name = "sym";

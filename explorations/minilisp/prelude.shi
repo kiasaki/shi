@@ -1,13 +1,190 @@
+; Syntax
+; ==========================
+
+; quote - Primitive
+; gensym - Primitive
+; macro - Primitive
+; macro-expand - Primitive
+; def - Primitive
+; set - Primitive
+; fn - Primitive
+; if - Primitive
+; do - Primitive
+
 (def list (fn (x . y) (cons x y)))
+
+(def defn (macro (name args . exprs)
+  (list 'def name (cons 'fn (cons args exprs)))))
+
+(def defmacro (macro (name args . exprs)
+  (list 'def name (cons 'macro (cons args exprs)))))
+
+; Types
+; ==========================
+
+; nil - Primitive
+; t - Primitive
+; type - Primitive
+
+(defn true? (x)
+  (eq (type x) 'true))
+(defn nil? (x)
+  (eq (type x) 'nil))
+(defn int? (x)
+  (eq (type x) 'int))
+(defn str? (x)
+  (eq (type x) 'str))
+(defn cons? (x)
+  (eq (type x) 'cons))
+(defn list? (x)
+  (eq (type x) 'list))
+(defn sym? (x)
+  (eq (type x) 'sym))
+(defn prim? (x)
+  (eq (type x) 'prim))
+(defn fn? (x)
+  (eq (type x) 'fn))
+(defn macro? (x)
+  (eq (type x) 'macro))
+(defn atom? (x)
+  (if (true? x) t (nil? x) t (int? x) t (str? x) t (sym? x) t nil))
+
+; Functions
+; ==========================
+
+; apply - Primitive
+
+(defmacro call (f args)
+  (cons f args))
+
+(defn identity (x) x)
+
+; Lists
+; ==========================
+
+; cons - Primitive
+; car - Primitive
+; cdr - Primitive
+; setcar - Primitive
+; while - Primitive
+
+(defn first (x)
+  (car x))
+
+(defn rest (x)
+  (cdr x))
+
+(defn caar (x) (car (car x)))
+(defn cadr (x) (car (cdr x)))
+(defn second (x) (car (cdr x)))
+(defn cdar (x) (cdr (car x)))
+(defn cddr (x) (cdr (cdr x)))
+(defn caaar (x) (car (car (car x))))
+(defn caadr (x) (car (car (cdr x))))
+(defn cadar (x) (car (cdr (car x))))
+(defn caddr (x) (car (cdr (cdr x))))
+(defn third (x) (car (cdr (cdr x))))
+(defn cdaar (x) (cdr (car (car x))))
+(defn cdadr (x) (cdr (car (cdr x))))
+(defn cddar (x) (cdr (cdr (car x))))
+(defn cdddr (x) (cdr (cdr (cdr x))))
+
+(defn length (x)
+  (if (nil? x) 0
+        (do
+          (def i 1)
+          (while (list? (cdr x))
+            (set x (cdr x))
+            (set i (+ i 1)))
+          i)))
+
+(defn reverse (in)
+  (if in (do
+    (def out nil)
+    (while (cdr in)
+      (set out (cons (car in) out))
+      (set in (cdr in)))
+    (cons (car in) out))))
+
+(defn nth (lst n)
+  (def i 0)
+  (while (< i n)
+    (set lst (cdr lst))
+    (set i (+ i 1)))
+  (car lst))
+
+(defn empty? (lst)
+  (= (length lst) 0))
+
+; Conditionals
+; ==========================
+
+; eq - Primitive
+
+; TODO eql
+
+(def cond if)
+
+(defn not (x)
+  (if x nil t))
+
+(defmacro when (test . body)
+  (list 'if test (cons 'do body)))
+
+(defmacro unless (test . body)
+  (list 'if (list 'not test) (cons 'do body)))
+
+; TODO and
+; TODO or
+
+; Syntax (suite)
+; ==========================
+
+; TODO unquote unquote-splicing quasiquote
+
+(defmacro let (args . body)
+  ((fn (vars vals)
+     (defn vars (x)
+       (cond x (cons (if (atom? (car x))
+                          (car x)
+                        (caar x))
+                      (vars (cdr x)))))
+     (defn vals (x)
+       (cond x (cons (if (atom (car x))
+                          nil
+                        (cadar x))
+                      (vals (cdr x)))))
+     `((lambda ,(vars args) ,@body) ,@(vals args)))
+   nil nil))
+
+; IO
+; ==========================
+
+; pr-str - Primitive
+; write - Primitive
+
+; TODO getenv - Primitive
+; TODO open - Primitive
+; TODO close - Primitive
+; TODO writeb - Primitive
+; TODO readb - Primitive
+; TODO std{in,out,err} - Primitive
+; TODO exit - Primitive
 
 (def newline (fn ()
   (write "\n")))
 
-(def print (fn (x)
+(def pr (fn (x)
   (write (pr-str x))))
+
+(def prn (fn (x)
+  (pr x)
+  (newline)))
+
+(def print (fn (x)
+  (write x)))
 
 (def println (fn (x)
   (print x)
   (newline)))
 
-(println '(1 "2" (3)))
