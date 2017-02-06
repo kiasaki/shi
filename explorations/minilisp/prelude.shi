@@ -1,0 +1,3 @@
+(defun list (x . y) (cons x y))
+
+(println "pre")
