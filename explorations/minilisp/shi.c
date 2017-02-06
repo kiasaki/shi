@@ -1071,9 +1071,9 @@ static Obj *prim_type(void *root, Obj **env, Obj **list) {
       error("type: unknown object type", values->car->type);
   }
 
-  DEFINE1(s);
-  *s = make_string(root, name);
-  return *s;
+  DEFINE1(k);
+  *k = intern(root, name);
+  return *k;
 }
 
 // (write "str")
