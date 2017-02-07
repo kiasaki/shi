@@ -102,6 +102,7 @@ run gensym t '((fn (x) (eq x x)) (gensym))'
 run fn '<function>' '(fn (x) x)'
 run fn t '((fn () t))'
 run fn 9 '((fn (x) (+ x x x)) 3)'
+run fn '(1 2 3)' '((fn xs xs) 1 2 3)'
 
 run args 15 '(def f (fn (x y z) (+ x y z))) (f 3 5 7)'
 
@@ -125,7 +126,7 @@ run counter 3 '
   (counter)
   (counter)'
 
-# While loop
+# while
 run while 45 "
   (def i 0)
   (def sum 0)
@@ -134,7 +135,7 @@ run while 45 "
     (set i (+ i 1)))
   sum"
 
-# Macros
+# macro
 run macro 42 "
   (def list (fn (x . y) (cons x y)))
   (def if-zero (macro (x then) (list 'if (list '= x 0) then)))
@@ -147,13 +148,15 @@ run macro-expand '(if (= x 0) (print x))' "
   (def if-zero (macro (x then) (list 'if (list '= x 0) then)))
   (macro-expand (if-zero x (print x)))"
 
-
-# Sum from 0 to 10
+# sum from 0 to 10
 run recursion 55 '(def f (fn (x) (if (= x 0) 0 (+ (f (+ x -1)) x)))) (f 10)'
 
 # string
 run string '"asd"' '"asd"'
 run string-escape '"a\n\t\"sd"' '"a\n\t\"sd"'
+
+# apply
+run apply '3' "(apply + '(1 2))"
 
 # type
 run type-int 'int' '(type 1)'
@@ -162,6 +165,15 @@ run type-nil 'nil' '(type nil)'
 run type-cons 'cons' '(type (cons 1 2))'
 run type-list1 'list' '(type (cons 1 nil))'
 run type-list2 'list' '(type (cons 1 (cons 2 nil)))'
+
+# conditionals
+run not1 '()' "(not t)"
+run not2 '()' "(not 10)"
+run not3 't' "(not nil)"
+run when1 '2' "(when t 1 2)"
+run when2 '()' "(when nil 1 2)"
+run unless1 '2' "(unless nil 1 2)"
+run unless2 '()' "(unless t 1 2)"
 
 # list fns
 run length0 '0' "(length nil)"
@@ -177,12 +189,33 @@ run empty?1 't' "(empty? nil)"
 run empty?2 't' "(empty? '())"
 run empty?3 '()' "(empty? '(1))"
 
-# conditionals
-run not1 '()' "(not t)"
-run not2 '()' "(not 10)"
-run not3 't' "(not nil)"
-run when1 '2' "(when t 1 2)"
-run when2 '()' "(when nil 1 2)"
-run unless1 '2' "(unless nil 1 2)"
-run unless2 '()' "(unless t 1 2)"
+# numbers
+run range1 '(0)' '(range 0 1)'
+run range5 '(0 1 2 3 4)' '(range 0 5)'
 
+# iteration
+run dolist1 'ab()' '(dolist (x (list "a" "b")) (write x))'
+run dolist2 'ab10' '(dolist (x (list "a" "b") 10) (write x))'
+run dotimes1 '0123()' '(dotimes (x 4) (pr x))'
+run map '(1 2 3 4 5)' '(map (fn (x) (+ x 1)) (range 0 5))'
+run reduce '10' '(reduce + (range 0 5))'
+run reduce '15' '(reduce + 5 (range 0 5))'
+
+# conditionals (suite)
+run or1 't' "(or t nil)"
+run or2 '()' "(or nil nil)"
+run or3 't' "(or nil nil t nil)"
+run or4 '()' "(or)"
+run and1 '()' "(and t nil)"
+run and2 '()' "(and nil nil)"
+run and3 '()' "(and nil nil t nil)"
+run and4 't' "(and)"
+run and5 't' "(and t)"
+run and6 '5' "(and t 1 5)"
+
+# collections
+run extend '(1 2 3)' "(extend '(1) '(2 3))"
+run extend '(1 2 3 4 5)' "(extend '(1) '() '(2 3 4) '(5))"
+
+# syntax (suite)
+run let1 '1' '(let ((x 1)) x)'

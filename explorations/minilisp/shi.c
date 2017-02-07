@@ -405,8 +405,7 @@ static Obj *make_primitive(void *root, Primitive *fn) {
   return r;
 }
 
-static Obj *make_function(void *root, Obj **env, int type, Obj **params,
-                          Obj **body) {
+static Obj *make_function(void *root, Obj **env, int type, Obj **params, Obj **body) {
   assert(type == TFUNCTION || type == TMACRO);
   Obj *r = alloc(root, type, sizeof(Obj *) * 3);
   r->params = *params;
@@ -733,14 +732,20 @@ static void add_variable(void *root, Obj **env, Obj **sym, Obj **val) {
 static Obj *push_env(void *root, Obj **env, Obj **vars, Obj **vals) {
   DEFINE3(map, sym, val);
   *map = Nil;
-  for (; (*vars)->type == TCELL; *vars = (*vars)->cdr, *vals = (*vals)->cdr) {
-    if ((*vals)->type != TCELL)
-      error("Cannot apply function: number of argument does not match");
-    *sym = (*vars)->car;
-    *val = (*vals)->car;
-    *map = acons(root, sym, val, map);
+  if ((*vars)->type == TSYMBOL) {
+    // (fn xs body ...)
+    *map = acons(root, vars, vals, map);
+  } else {
+    // (fn (x y) body ...)
+    for (; (*vars)->type == TCELL; *vars = (*vars)->cdr, *vals = (*vals)->cdr) {
+      if ((*vals)->type != TCELL)
+        error("Cannot apply function: number of argument does not match");
+      *sym = (*vars)->car;
+      *val = (*vals)->car;
+      *map = acons(root, sym, val, map);
+    }
+    if (*vars != Nil) *map = acons(root, vars, vals, map);
   }
-  if (*vars != Nil) *map = acons(root, vars, vals, map);
   return make_env(root, map, env);
 }
 
@@ -781,7 +786,9 @@ static Obj *apply_func(void *root, Obj **env, Obj **fn, Obj **args) {
 
 // Apply fn with args.
 static Obj *apply(void *root, Obj **env, Obj **fn, Obj **args) {
-  if (!is_list(*args)) error("argument must be a list");
+  if (!is_list(*args)) {
+    error("argument must be a list");
+  }
   if ((*fn)->type == TPRIMITIVE) return (*fn)->fn(root, env, args);
   if ((*fn)->type == TFUNCTION) {
     DEFINE1(eargs);
@@ -804,11 +811,17 @@ static Obj *find(Obj **env, Obj *sym) {
 
 // Expands the given macro application form.
 static Obj *macroexpand(void *root, Obj **env, Obj **obj) {
-  if ((*obj)->type != TCELL || (*obj)->car->type != TSYMBOL) return *obj;
+  if ((*obj)->type != TCELL || ((*obj)->car->type != TSYMBOL && (*obj)->car->type != TMACRO)) {
+    return *obj;
+  }
   DEFINE3(bind, macro, args);
-  *bind = find(env, (*obj)->car);
-  if (!*bind || (*bind)->cdr->type != TMACRO) return *obj;
-  *macro = (*bind)->cdr;
+  if ((*obj)->car->type == TMACRO) {
+    *macro = (*obj)->car;
+  } else {
+    *bind = find(env, (*obj)->car);
+    if (!*bind || (*bind)->cdr->type != TMACRO) return *obj;
+    *macro = (*bind)->cdr;
+  }
   *args = (*obj)->cdr;
   return apply_func(root, env, macro, args);
 }
@@ -820,6 +833,7 @@ static Obj *eval(void *root, Obj **env, Obj **obj) {
     case TSTR:
     case TPRIMITIVE:
     case TFUNCTION:
+    case TMACRO:
     case TTRUE:
     case TNIL:
       // Self-evaluating objects
@@ -838,8 +852,9 @@ static Obj *eval(void *root, Obj **env, Obj **obj) {
       *fn = (*obj)->car;
       *fn = eval(root, env, fn);
       *args = (*obj)->cdr;
-      if ((*fn)->type != TPRIMITIVE && (*fn)->type != TFUNCTION)
+      if ((*fn)->type != TPRIMITIVE && (*fn)->type != TFUNCTION) {
         error("The head of a list must be a function");
+      }
       return apply(root, env, fn, args);
     }
     default:
@@ -907,12 +922,6 @@ static Obj *prim_do(void *root, Obj **env, Obj **list) {
   return progn(root, env, list);
 }
 
-// (apply fn arg1 arg2 ...)
-static Obj *prim_apply(void *root, Obj **env, Obj **list) {
-  Obj *values = eval_list(root, env, list);
-  return apply(root, env, &values->car, &values->cdr);
-}
-
 // (while cond expr ...)
 static Obj *prim_while(void *root, Obj **env, Obj **list) {
   if (length(*list) < 2) error("Malformed while");
@@ -965,13 +974,18 @@ static Obj *prim_lt(void *root, Obj **env, Obj **list) {
 }
 
 static Obj *handle_function(void *root, Obj **env, Obj **list, int type) {
-  if ((*list)->type != TCELL || !is_list((*list)->car) ||
+  if ((*list)->type != TCELL || !(is_list((*list)->car) || (*list)->car->type == TSYMBOL) ||
       (*list)->cdr->type != TCELL)
     error("Malformed fn or macro");
+
   Obj *p = (*list)->car;
-  for (; p->type == TCELL; p = p->cdr)
-    if (p->car->type != TSYMBOL) error("Parameter must be a symbol");
-  if (p != Nil && p->type != TSYMBOL) error("Parameter must be a symbol");
+  // validate (arg0 arg1) or (arg0 . argN) forms
+  if (p->type != TSYMBOL) { // but allow a single symbol to be params
+    for (; p->type == TCELL; p = p->cdr)
+      if (p->car->type != TSYMBOL) error("Parameter must be a symbol");
+    if (p != Nil && p->type != TSYMBOL) error("Parameter must be a symbol");
+  }
+
   DEFINE2(params, body);
   *params = (*list)->car;
   *body = (*list)->cdr;
@@ -1057,6 +1071,26 @@ static Obj *prim_eq(void *root, Obj **env, Obj **list) {
   if (length(*list) != 2) error("Malformed eq");
   Obj *values = eval_list(root, env, list);
   return values->car == values->cdr->car ? True : Nil;
+}
+
+// (eval expr)
+static Obj *prim_eval(void *root, Obj **env, Obj **list) {
+  if (length(*list) != 1) error("Malformed eval");
+  DEFINE1(arg);
+  *arg = (*list)->car;
+  //*val = eval(root, env, arg); ??
+  return eval(root, env, arg);
+}
+
+// (apply fn args)
+static Obj *prim_apply(void *root, Obj **env, Obj **list) {
+  if (length(*list) != 2) error("Malformed apply");
+  DEFINE2(fn, args);
+  *fn = (*list)->car;
+  *fn = eval(root, env, fn);
+  *args = (*list)->cdr->car;
+  print(*args);
+  return apply(root, env, fn, args);
 }
 
 // (type expr)
@@ -1150,7 +1184,6 @@ static void define_primitives(void *root, Obj **env) {
   add_primitive(root, env, "fn", prim_fn);
   add_primitive(root, env, "if", prim_if);
   add_primitive(root, env, "do", prim_do);
-  add_primitive(root, env, "apply", prim_apply);
   add_primitive(root, env, "while", prim_while);
 
   add_primitive(root, env, "+", prim_plus);
@@ -1159,6 +1192,8 @@ static void define_primitives(void *root, Obj **env) {
   add_primitive(root, env, "=", prim_num_eq);
   add_primitive(root, env, "eq", prim_eq);
 
+  add_primitive(root, env, "eval", prim_eval);
+  add_primitive(root, env, "apply", prim_apply);
   add_primitive(root, env, "type", prim_type);
   add_primitive(root, env, "pr-str", prim_pr_str);
   add_primitive(root, env, "write", prim_write);

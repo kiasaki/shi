@@ -29,7 +29,7 @@ syntax keyword shiBuiltin "+"
 syntax keyword shiBuiltin "-"
 syntax keyword shiBuiltin "*"
 syntax keyword shiBuiltin "/"
-syntax keyword shiBuiltin "mod"
+syntax keyword shiBuiltin mod
 syntax keyword shiBuiltin "<"
 syntax keyword shiBuiltin "<="
 syntax keyword shiBuiltin ">"

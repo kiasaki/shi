@@ -49,13 +49,24 @@
 (defn atom? (x)
   (if (true? x) t (nil? x) t (int? x) t (str? x) t (sym? x) t nil))
 
-; Functions
+; Conditionals
 ; ==========================
 
-; apply - Primitive
+; eq - Primitive
 
-(defmacro call (f args)
-  (cons f args))
+(def cond if)
+
+(defn not (x)
+  (if x nil t))
+
+(defmacro when (test . body)
+  (list 'if test (cons 'do body)))
+
+(defmacro unless (test . body)
+  (list 'if (list 'not test) (cons 'do body)))
+
+; Functions
+; ==========================
 
 (defn identity (x) x)
 
@@ -116,31 +127,152 @@
 (defn empty? (lst)
   (= (length lst) 0))
 
-; Conditionals
+; Numbers
 ; ==========================
 
-; eq - Primitive
+(defn range (start end)
+  (def ret nil)
+  (def i end)
+  (while (> i start)
+    (set i (- i 1))
+    (set ret (cons i ret)))
+  ret)
+
+(defn > (x y) (< y x))
+(defn >= (x y) (not (< x y)))
+(defn <= (x y) (not (< y x)))
+(defn /= (x y) (not (= x y)))
+
+(defn pair? (x)
+  (eq (mod x 2) 0))
+
+(defn odd? (x)
+  (not (pair? x)))
+
+; Iteration
+; ==========================
+
+(defmacro dolist (var-and-list . body)
+  (def var-name (first var-and-list))
+  (if (sym? var-name) nil (error "dolist: item var not symbol"))
+  (def list-val (second var-and-list))
+  (def ret-val (if (nil? (cddr var-and-list))
+    nil
+    (third var-and-list)))
+  (def list-name (gensym))
+  (list 'do
+    (list 'def list-name list-val)
+    (list 'def var-name (list 'car list-val))
+    (cons 'while
+      (cons (list 'list? list-name)
+        (cons (list 'set var-name (list 'car list-name))
+          (cons (list 'set list-name (list 'cdr list-name))
+            body))))
+    ret-val))
+
+(defmacro dotimes (var-and-num . body)
+  (if (int? (second var-and-num)) nil (error "dotimes: need a number"))
+  (def var-name (first var-and-num))
+  (def numbers (range 0 (second var-and-num)))
+  (cons dolist (cons (list var-name (cons 'list numbers)) body)))
+
+(defn map (f coll)
+  (def ret nil)
+  (dolist (x coll (reverse ret))
+    (set ret (cons (f x) ret))))
+
+(defn reduce (f . args)
+  (if (cdr args)
+    (do
+      (def ret (first args))
+      (def coll (second args)))
+    (do
+      (def ret (first (first args)))
+      (def coll (rest (first args)))))
+
+  (dolist (x coll ret)
+    (set ret (f ret x))))
+
+; Conditionals (suite)
+; ==========================
 
 ; TODO eql
 
-(def cond if)
+(defmacro or xs
+  (unless (empty? xs)
+    (def x-name (gensym))
+    (list 'do
+      (set x-name (first xs))
+      (list 'if x-name x-name (cons 'or (rest xs))))))
 
-(defn not (x)
-  (if x nil t))
+(defmacro and xs
+  (if (empty? xs) t
+      (empty? (rest xs)) (first xs)
+      (list 'if (first xs) (cons 'and (rest xs)) nil)))
 
-(defmacro when (test . body)
-  (list 'if test (cons 'do body)))
+; Collections
+; ==========================
 
-(defmacro unless (test . body)
-  (list 'if (list 'not test) (cons 'do body)))
+(defn list-extend colls
+  (def ret nil)
+  (dolist (c colls)
+    (dolist (x c)
+      (set ret (cons x ret))))
+  ret)
 
-; TODO and
-; TODO or
+(defn conj (coll item)
+  (cond (list? coll)
+          (cons item coll)
+        (error "conj: not a collection")))
+
+(defn extend colls
+  (cond (empty? colls) nil
+        (list? (first colls))
+          (apply list-extend colls)
+        (error "extend: not a collection")))
 
 ; Syntax (suite)
 ; ==========================
 
-; TODO unquote unquote-splicing quasiquote
+(defn qq-expand-list (exp)
+  (cond
+    (and (list? exp) (empty? exp))
+      exp
+    (list? exp)
+      (cond
+        (eq 'unquote (first exp))
+          (list 'list (second exp))
+        (eq 'unquote-splicing (first exp))
+          (second exp)
+        (eq 'quasiquote (first exp))
+          (qq-expand-list (qq-expand (second exp)))
+        (list 'list (list 'append (qq-expand-list (first exp)) (qq-expand (rest exp)))))
+    (list 'list exp)))
+
+(defn qq-expand (exp)
+  (cond
+    (and (list? exp) (empty? exp))
+      exp
+    ;(vec? exp)
+    ;  (list 'apply 'vec (qq-expand (vec->list exp) nesting))
+    (list? exp)
+      (cond
+        (eq 'unquote (first exp))
+          (second exp)
+        (eq 'unquote-splicing (first exp))
+          (error "illegal unquote-splicing at quasiquote root")
+        (eq 'quasiquote (first exp))
+          (qq-expand (qq-expand (second exp)))
+        (list 'append (qq-expand-list (first exp)) (qq-expand (rest exp))))
+    exp))
+
+(defmacro quasiquote (exp)
+  (qq-expand exp))
+
+(defn unquote (x)
+  (error "unquote called outside of quasiquote"))
+(defn unquote-splicing (_)
+  (error "unquote-splicing called outside of quasiquote"))
 
 (defmacro let (args . body)
   ((fn (vars vals)
@@ -150,7 +282,7 @@
                         (caar x))
                       (vars (cdr x)))))
      (defn vals (x)
-       (cond x (cons (if (atom (car x))
+       (cond x (cons (if (atom? (car x))
                           nil
                         (cadar x))
                       (vals (cdr x)))))
@@ -170,6 +302,9 @@
 ; TODO readb - Primitive
 ; TODO std{in,out,err} - Primitive
 ; TODO exit - Primitive
+; TODO error - Primitive
+; TODO trap-error - Primitive
+; TODO sleep - Primitive
 
 (def newline (fn ()
   (write "\n")))
@@ -187,4 +322,3 @@
 (def println (fn (x)
   (print x)
   (newline)))
-
