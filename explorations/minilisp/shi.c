@@ -12,9 +12,14 @@
 #include <unistd.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/socket.h>
 // #include <sys/mman.h>
 
 #include "linenoise.h"
+
+#ifndef SIGCHLD
+#define SIGCHLD SIGCLD
+#endif
 
 static __attribute((noreturn)) void error(char *fmt, ...) {
   va_list ap;
@@ -1219,6 +1224,26 @@ static Obj *prim_exit(void *root, Obj **env, Obj **list) {
   return Nil;
 }
 
+// (socket domain type protocol) -> fd
+static Obj *prim_socket(void *root, Obj **env, Obj **list) {
+  if (length(*list) != 3) error("exit: not given exactly 3 args");
+  Obj *values = eval_list(root, env, list);
+  if (values->car->type != TINT) error("exit: 1st arg not int");
+  if (values->cdr->car->type != TINT) error("exit: 2nd arg not int");
+  if (values->cdr->cdr->car->type != TINT) error("exit: 3rd arg not int");
+
+  int domain = values->car->value;
+  int type = values->cdr->car->value;
+  int protocol = values->cdr->cdr->car->value;
+
+  int fd;
+  if ((fd = socket(domain, type, protocol)) < 0) {
+    error("socket: erorr creating socket");
+  }
+
+  return make_int(root, fd);
+}
+
 static void add_primitive(void *root, Obj **env, char *name, Primitive *fn) {
   DEFINE2(sym, prim);
   *sym = intern(root, name);
@@ -1227,11 +1252,27 @@ static void add_primitive(void *root, Obj **env, char *name, Primitive *fn) {
 }
 
 static void define_constants(void *root, Obj **env) {
-  DEFINE2(tsym, nsym);
+  ADD_ROOT(6);
+
+  Obj **tsym = (Obj **)(root_ADD_ROOT_ + 1);
   *tsym = intern(root, "t");
   add_variable(root, env, tsym, &True);
+
+  Obj **nsym = (Obj **)(root_ADD_ROOT_ + 2);
   *nsym = intern(root, "nil");
   add_variable(root, env, nsym, &Nil);
+
+  Obj **pf_inet = (Obj **)(root_ADD_ROOT_ + 3);
+  Obj **pf_inet_val = (Obj **)(root_ADD_ROOT_ + 4);
+  *pf_inet = intern(root, "PF_INET");
+  *pf_inet_val = make_int(root, PF_INET);
+  add_variable(root, env, pf_inet, pf_inet_val);
+
+  Obj **sock_stream = (Obj **)(root_ADD_ROOT_ + 5);
+  Obj **sock_stream_val = (Obj **)(root_ADD_ROOT_ + 6);
+  *sock_stream = intern(root, "SOCK_STREAM");
+  *sock_stream_val = make_int(root, SOCK_STREAM);
+  add_variable(root, env, sock_stream, sock_stream_val);
 }
 
 static void define_primitives(void *root, Obj **env) {
@@ -1276,6 +1317,7 @@ static void define_primitives(void *root, Obj **env) {
   add_primitive(root, env, "seconds", prim_seconds);
   add_primitive(root, env, "sleep", prim_sleep);
   add_primitive(root, env, "exit", prim_exit);
+  add_primitive(root, env, "socket", prim_socket);
 }
 
 //======================================================================
