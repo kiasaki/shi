@@ -306,18 +306,24 @@
 ; TODO trap-error - Primitive
 ; TODO sleep - Primitive
 
+(def *stdin* 1)
+(def *stdout* 2)
+(def *stderr* 3)
+(def *in* *stdin*)
+(def *out* *stdout*)
+
 (def newline (fn ()
-  (write "\n")))
+  (write *out* "\n")))
 
 (def pr (fn (x)
-  (write (pr-str x))))
+  (write *out* (pr-str x))))
 
 (def prn (fn (x)
   (pr x)
   (newline)))
 
 (def print (fn (x)
-  (write x)))
+  (write *out* x)))
 
 (def println (fn (x)
   (print x)

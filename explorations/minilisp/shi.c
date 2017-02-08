@@ -8,7 +8,9 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
+#include <strings.h>
 // #include <sys/mman.h>
 
 static __attribute((noreturn)) void error(char *fmt, ...) {
@@ -974,7 +976,8 @@ static Obj *prim_lt(void *root, Obj **env, Obj **list) {
 }
 
 static Obj *handle_function(void *root, Obj **env, Obj **list, int type) {
-  if ((*list)->type != TCELL || !(is_list((*list)->car) || (*list)->car->type == TSYMBOL) ||
+  if ((*list)->type != TCELL ||
+      !(is_list((*list)->car) || (*list)->car->type == TSYMBOL) ||
       (*list)->cdr->type != TCELL)
     error("Malformed fn or macro");
 
@@ -1143,14 +1146,39 @@ static Obj *prim_type(void *root, Obj **env, Obj **list) {
 
 // (write "str")
 static Obj *prim_write(void *root, Obj **env, Obj **list) {
-  if (length(*list) != 1) error("Malformed write");
+  if (length(*list) != 2) error("write: not given exactly 2 args");
 
   Obj *values = eval_list(root, env, list);
 
-  if (values->car->type != TSTR) error("Malformed write");
+  if (values->car->type != TINT) error("write: 1st arg not file descriptor");
+  if (values->cdr->car->type != TSTR) error("write: 2nd arg not string");
 
-  printf("%s", values->car->str);
-  return True;
+  int fd = values->car->value;
+  char *str = values->cdr->car->str;
+
+  if (write(fd, str, strlen(str)) < 0)
+    error("write: error");
+  return Nil;
+}
+
+// (read "str")
+static Obj *prim_read(void *root, Obj **env, Obj **list) {
+  if (length(*list) != 2) error("read: not given exactly 2 args");
+
+  Obj *values = eval_list(root, env, list);
+
+  if (values->car->type != TINT) error("read: 1st arg not file descriptor");
+  if (values->cdr->car->type != TINT) error("read: 2nd arg not int");
+
+  int fd = values->car->value;
+  int len = values->cdr->car->value;
+
+  char str[len+1];
+  bzero(str, len+1);
+  if (read(fd, &str, len) < 0)
+    error("read: error");
+
+  return make_string(root, str);
 }
 
 static void add_primitive(void *root, Obj **env, char *name, Primitive *fn) {
@@ -1197,6 +1225,7 @@ static void define_primitives(void *root, Obj **env) {
   add_primitive(root, env, "type", prim_type);
   add_primitive(root, env, "pr-str", prim_pr_str);
   add_primitive(root, env, "write", prim_write);
+  add_primitive(root, env, "read", prim_read);
 }
 
 //======================================================================
