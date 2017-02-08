@@ -1,6 +1,7 @@
 // This software is in the public domain.
 
 #include <assert.h>
+#include <time.h>
 #include <ctype.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -12,6 +13,8 @@
 #include <string.h>
 #include <strings.h>
 // #include <sys/mman.h>
+
+#include "linenoise.h"
 
 static __attribute((noreturn)) void error(char *fmt, ...) {
   va_list ap;
@@ -1087,12 +1090,15 @@ static Obj *prim_eval(void *root, Obj **env, Obj **list) {
 
 // (apply fn args)
 static Obj *prim_apply(void *root, Obj **env, Obj **list) {
-  if (length(*list) != 2) error("Malformed apply");
+  if (length(*list) != 2) error("apply: not given exactly 2 args");
   DEFINE2(fn, args);
   *fn = (*list)->car;
   *fn = eval(root, env, fn);
+
   *args = (*list)->cdr->car;
-  print(*args);
+  *args = eval(root, env, args);
+  if ((*args)->type != TCELL) error("apply: 2nd argument is not a list");
+
   return apply(root, env, fn, args);
 }
 
@@ -1181,6 +1187,38 @@ static Obj *prim_read(void *root, Obj **env, Obj **list) {
   return make_string(root, str);
 }
 
+// (seconds)
+static Obj *prim_seconds(void *root, Obj **env, Obj **list) {
+  if (length(*list) != 0) error("seconds: takes no args");
+  struct timespec spec;
+  clock_gettime(CLOCK_REALTIME, &spec);
+  return make_int(root, spec.tv_sec);
+}
+
+// (sleep n)
+static Obj *prim_sleep(void *root, Obj **env, Obj **list) {
+  if (length(*list) != 1) error("sleep: not given exactly 1 args");
+  Obj *values = eval_list(root, env, list);
+  if (values->car->type != TINT) error("sleep: 1st arg not int");
+
+  int milliseconds = values->car->value;
+  struct timespec ts;
+  ts.tv_sec = milliseconds / 1000;
+  ts.tv_nsec = (milliseconds % 1000) * 1000000;
+  nanosleep(&ts, NULL);
+  return Nil;
+}
+
+// (exit code)
+static Obj *prim_exit(void *root, Obj **env, Obj **list) {
+  if (length(*list) != 1) error("exit: not given exactly 1 args");
+  Obj *values = eval_list(root, env, list);
+  if (values->car->type != TINT) error("exit: 1st arg not int");
+
+  exit(values->car->value);
+  return Nil;
+}
+
 static void add_primitive(void *root, Obj **env, char *name, Primitive *fn) {
   DEFINE2(sym, prim);
   *sym = intern(root, name);
@@ -1197,16 +1235,19 @@ static void define_constants(void *root, Obj **env) {
 }
 
 static void define_primitives(void *root, Obj **env) {
+  // Macro
   add_primitive(root, env, "quote", prim_quote);
   add_primitive(root, env, "gensym", prim_gensym);
   add_primitive(root, env, "macro", prim_macro);
   add_primitive(root, env, "macro-expand", prim_macro_expand);
 
+  // Lists
   add_primitive(root, env, "cons", prim_cons);
   add_primitive(root, env, "car", prim_car);
   add_primitive(root, env, "cdr", prim_cdr);
   add_primitive(root, env, "setcar", prim_setcar);
 
+  // Language
   add_primitive(root, env, "def", prim_def);
   add_primitive(root, env, "set", prim_set);
   add_primitive(root, env, "fn", prim_fn);
@@ -1214,18 +1255,27 @@ static void define_primitives(void *root, Obj **env) {
   add_primitive(root, env, "do", prim_do);
   add_primitive(root, env, "while", prim_while);
 
+  // Math
   add_primitive(root, env, "+", prim_plus);
   add_primitive(root, env, "-", prim_minus);
   add_primitive(root, env, "<", prim_lt);
   add_primitive(root, env, "=", prim_num_eq);
   add_primitive(root, env, "eq", prim_eq);
 
+  // Language (suite)
   add_primitive(root, env, "eval", prim_eval);
   add_primitive(root, env, "apply", prim_apply);
   add_primitive(root, env, "type", prim_type);
+
+  // IO
   add_primitive(root, env, "pr-str", prim_pr_str);
   add_primitive(root, env, "write", prim_write);
   add_primitive(root, env, "read", prim_read);
+
+  // OS
+  add_primitive(root, env, "seconds", prim_seconds);
+  add_primitive(root, env, "sleep", prim_sleep);
+  add_primitive(root, env, "exit", prim_exit);
 }
 
 //======================================================================

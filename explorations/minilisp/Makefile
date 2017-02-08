@@ -1,10 +1,10 @@
 CC=cc
-CFLAGS=-std=c99 -ggdb -O2 -Wall
+CFLAGS=-std=c99 -g -O2 -Wall
 
 .PHONY: clean test
 
-shi: shi.c
-	$(CC) $(CFLAGS) shi.c -o shi
+shi: shi.c linenoise.c
+	$(CC) $(CFLAGS) shi.c linenoise.c -o shi
 
 clean:
 	rm -f shi *~

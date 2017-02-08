@@ -246,7 +246,7 @@
           (second exp)
         (eq 'quasiquote (first exp))
           (qq-expand-list (qq-expand (second exp)))
-        (list 'list (list 'append (qq-expand-list (first exp)) (qq-expand (rest exp)))))
+        (list 'list (list 'extend (qq-expand-list (first exp)) (qq-expand (rest exp)))))
     (list 'list exp)))
 
 (defn qq-expand (exp)
@@ -263,7 +263,7 @@
           (error "illegal unquote-splicing at quasiquote root")
         (eq 'quasiquote (first exp))
           (qq-expand (qq-expand (second exp)))
-        (list 'append (qq-expand-list (first exp)) (qq-expand (rest exp))))
+        (list 'extend (qq-expand-list (first exp)) (qq-expand (rest exp))))
     exp))
 
 (defmacro quasiquote (exp)
@@ -306,9 +306,9 @@
 ; TODO trap-error - Primitive
 ; TODO sleep - Primitive
 
-(def *stdin* 1)
-(def *stdout* 2)
-(def *stderr* 3)
+(def *stdin* 0)
+(def *stdout* 1)
+(def *stderr* 2)
 (def *in* *stdin*)
 (def *out* *stdout*)
 

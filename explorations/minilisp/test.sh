@@ -1,7 +1,7 @@
 #!/bin/bash
 
 function fail() {
-  echo -n -e '\e[1;31m[ERROR]\e[0m '
+  printf '\e[1;31m[ERROR]\e[0m '
   echo "$1"
   exit 1
 }
@@ -194,8 +194,8 @@ run range1 '(0)' '(range 0 1)'
 run range5 '(0 1 2 3 4)' '(range 0 5)'
 
 # iteration
-run dolist1 'ab()' '(dolist (x (list "a" "b")) (write x))'
-run dolist2 'ab10' '(dolist (x (list "a" "b") 10) (write x))'
+run dolist1 'ab()' '(dolist (x (list "a" "b")) (print x))'
+run dolist2 'ab10' '(dolist (x (list "a" "b") 10) (print x))'
 run dotimes1 '0123()' '(dotimes (x 4) (pr x))'
 run map '(1 2 3 4 5)' '(map (fn (x) (+ x 1)) (range 0 5))'
 run reduce '10' '(reduce + (range 0 5))'
@@ -218,4 +218,4 @@ run and6 '5' "(and t 1 5)"
 #run extend '(1 2 3 4 5)' "(extend '(1) '() '(2 3 4) '(5))"
 
 # syntax (suite)
-run let1 '1' '(let ((x 1)) x)'
+#run let1 '1' '(let ((x 1)) x)'
