@@ -932,6 +932,39 @@ static Obj *prim_setcar(void *root, Obj **env, Obj **list) {
   return (*args)->car;
 }
 
+// (str str0 str1 str3)
+static Obj *prim_str(void *root, Obj **env, Obj **list) {
+  // Ensure we are only dealing with strings and compute final length
+  int len = 0;
+  Obj *args = eval_list(root, env, list);
+  for (Obj *a = args; a != Nil; a = a->cdr) {
+    if (a->car->type != TSTR) error("str: argument not a string");
+    len += strlen(a->car->str);
+  }
+
+  char ret[len+1];
+  char *last = &ret[0];
+
+  // Append strings to return value
+  for (Obj *a = args; a != Nil; a = a->cdr) {
+    last = stpcpy(last, a->car->str);
+  }
+
+  ret[len+1] = '\0';
+  return make_string(root, &ret[0]);
+}
+
+// (str-len str)
+static Obj *prim_str_len(void *root, Obj **env, Obj **list) {
+  DEFINE1(args);
+  *args = eval_list(root, env, list);
+  if (length(*args) != 1 || (*args)->car->type != TSTR) {
+    error("str-len: 1st arg is not a string");
+  }
+
+  return make_int(root, strlen((*args)->car->str));
+}
+
 // (do body ...)
 static Obj *prim_do(void *root, Obj **env, Obj **list) {
   return progn(root, env, list);
@@ -1239,10 +1272,10 @@ static Obj *prim_open(void *root, Obj **env, Obj **list) {
 
   // Check 2nd param (can be either 'append or 'truncate)
   Obj *rest = values->cdr;
-  if (rest != Nil && rest->car->type == TSYMBOL && strncmp(rest->car->name, "append", 6) == 0) {
-    flags = flags | O_APPEND;
-  } else {
+  if (rest != Nil && rest->car->type == TSYMBOL && strncmp(rest->car->name, "truncate", 8) == 0) {
     flags = flags | O_TRUNC;
+  } else {
+    flags = flags | O_APPEND;
   }
 
   int fd;
@@ -1419,6 +1452,10 @@ static void define_primitives(void *root, Obj **env) {
   add_primitive(root, env, "car", prim_car);
   add_primitive(root, env, "cdr", prim_cdr);
   add_primitive(root, env, "setcar", prim_setcar);
+
+  // Strings
+  add_primitive(root, env, "str", prim_str);
+  add_primitive(root, env, "str-len", prim_str_len);
 
   // Language
   add_primitive(root, env, "def", prim_def);

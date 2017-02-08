@@ -1,3 +1,4 @@
+(fn ()
 (println "starting")
 
 (def host "0.0.0.0")
@@ -28,3 +29,16 @@ Hello world!")
 
 (close listen-fd)
 (exit 0)
+)
+
+(defn read-all (path)
+  (def fd (open path))
+  (def contents "")
+  (def last-read (read fd 255))
+  (while (> (str-len last-read) 0)
+    (set contents (str contents last-read))
+    (set last-read (read fd 255)))
+  (close fd)
+  contents)
+
+(println (read-all "test.txt"))

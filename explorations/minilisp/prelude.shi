@@ -189,7 +189,6 @@
     (do
       (def ret (first (first args)))
       (def coll (rest (first args)))))
-
   (dolist (x coll ret)
     (set ret (f ret x))))
 

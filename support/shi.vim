@@ -11,7 +11,7 @@ syntax case match
 
 " ! $ - / 0-9 < = > ? @ a-zA-Z _
 setlocal iskeyword=33,35-37,42,43,45,47,48-57,60-64,124,@,_
-syntax match ethSymbol "\<\k\+\>"
+syntax match shiSymbol "\<\k\+\>"
 
 " builtin
 syntax keyword shiBuiltin macro
@@ -50,8 +50,9 @@ syntax keyword shiFunc caaar caadr cadar caddr third cdaar cdadr cddar cdddr
 syntax keyword shiFunc length reverse nth empty?
 syntax keyword shiFunc eq eql not when unless and or
 syntax keyword shiFunc unquote unquote-splicing quasiquote
-syntax keyword shiFunc pr-str write getenv open close readb writeb exit rand millis
+syntax keyword shiFunc pr-str write getenv open close readb writeb exit rand millis seconds
 syntax keyword shiFunc newline pr prn print println
+syntax keyword shiFunc sleep open close read bind-inet socket listen accept
 
 syntax match shiKeyword ":\<\k\+\>"
 
@@ -62,7 +63,7 @@ syntax match shiNumber "\v<[-+]?%(0|[1-9]\d*)\.?\d*>"
 
 syntax keyword shiBoolean nil t
 
-syntax match shiVarArg "."
+syntax match shiVarArg "\."
 
 syntax match shiComment ";.*$" contains=shiCommentTodo,@Spell
 syntax keyword shiCommentTodo contained FIXME TODO HACK FIXME: TODO: HACK:
