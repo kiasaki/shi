@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <time.h>
+#include <errno.h>
 #include <ctype.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -12,8 +13,12 @@
 #include <unistd.h>
 #include <string.h>
 #include <strings.h>
-#include <sys/socket.h>
 // #include <sys/mman.h>
+
+#include <fcntl.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include "linenoise.h"
 
@@ -1224,13 +1229,48 @@ static Obj *prim_exit(void *root, Obj **env, Obj **list) {
   return Nil;
 }
 
+// (open path append-or-trunc) -> fd
+static Obj *prim_open(void *root, Obj **env, Obj **list) {
+  if (length(*list) < 1) error("open: not given a path");
+  Obj *values = eval_list(root, env, list);
+  if (values->car->type != TSTR) error("open: 1st arg not string");
+
+  int flags = O_RDWR | O_CREAT;
+
+  // Check 2nd param (can be either 'append or 'truncate)
+  Obj *rest = values->cdr;
+  if (rest != Nil && rest->car->type == TSYMBOL && strncmp(rest->car->name, "append", 6) == 0) {
+    flags = flags | O_APPEND;
+  } else {
+    flags = flags | O_TRUNC;
+  }
+
+  int fd;
+  if ((fd = open(values->car->str, flags)) < 0) {
+    error("open: error opening file");
+  }
+  return make_int(root, fd);
+}
+
+// (close fd)
+static Obj *prim_close(void *root, Obj **env, Obj **list) {
+  if (length(*list) != 1) error("close: not given exactly 1 arg");
+  Obj *values = eval_list(root, env, list);
+  if (values->car->type != TINT) error("open: 1st arg not int");
+
+  if (close(values->car->value) < 0) {
+    error("close: error closing file");
+  }
+  return Nil;
+}
+
 // (socket domain type protocol) -> fd
 static Obj *prim_socket(void *root, Obj **env, Obj **list) {
-  if (length(*list) != 3) error("exit: not given exactly 3 args");
+  if (length(*list) != 3) error("socket: not given exactly 3 args");
   Obj *values = eval_list(root, env, list);
-  if (values->car->type != TINT) error("exit: 1st arg not int");
-  if (values->cdr->car->type != TINT) error("exit: 2nd arg not int");
-  if (values->cdr->cdr->car->type != TINT) error("exit: 3rd arg not int");
+  if (values->car->type != TINT) error("socket: 1st arg not int");
+  if (values->cdr->car->type != TINT) error("socket: 2nd arg not int");
+  if (values->cdr->cdr->car->type != TINT) error("socket: 3rd arg not int");
 
   int domain = values->car->value;
   int type = values->cdr->car->value;
@@ -1238,10 +1278,102 @@ static Obj *prim_socket(void *root, Obj **env, Obj **list) {
 
   int fd;
   if ((fd = socket(domain, type, protocol)) < 0) {
-    error("socket: erorr creating socket");
+    error("socket: error creating socket");
   }
 
   return make_int(root, fd);
+}
+
+// (bind-inet socket-fd host port) -> fd
+static Obj *prim_bind_inet(void *root, Obj **env, Obj **list) {
+  if (length(*list) != 3) error("bind-inet: not given exactly 3 args");
+  Obj *values = eval_list(root, env, list);
+  if (values->car->type != TINT) error("bind-inet: 1st arg not int");
+  if (values->cdr->car->type != TSTR) error("bind-inet: 2nd arg not string");
+  if (values->cdr->cdr->car->type != TINT) error("bind-inet: 3rd arg not int");
+
+  int socket_fd = values->car->value;
+  char *host = values->cdr->car->str;
+  int port = values->cdr->cdr->car->value;
+
+  struct sockaddr_in serv_addr;
+  serv_addr.sin_family = AF_INET;
+  serv_addr.sin_port = htons(port);
+  if (inet_aton(host, &serv_addr.sin_addr) < 0) {
+    error("bind-inet: could not parse host");
+  }
+  if (bind(socket_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+    error("bind-inet: error binding to address");
+  }
+
+  return Nil;
+}
+
+// (listen socket-fd backlog-size)
+static Obj *prim_listen(void *root, Obj **env, Obj **list) {
+  if (length(*list) != 2) error("listen: not given exactly 2 args");
+  Obj *values = eval_list(root, env, list);
+  if (values->car->type != TINT) error("listen: 1st arg not int");
+  if (values->cdr->car->type != TINT) error("listen: 2nd arg not int");
+
+  int socket_fd = values->car->value;
+  int backlog_size = values->cdr->car->value;
+
+  if (listen(socket_fd, backlog_size) < 0) {
+    switch (errno) {
+      case EACCES:
+        error("listen: insuficient privileges");
+      case EBADF:
+        error("listen: given socket is not a valid file descriptor");
+      case EINVAL:
+        error("listen: socket is already listenning");
+      case ENOTSOCK:
+        error("listen: file descriptor given is not a valid socket");
+      case EOPNOTSUPP:
+        error("listen: socket type not supported");
+      default:
+        error("listen: error");
+    }
+  }
+
+  return Nil;
+}
+
+// (accept socket-fd)
+static Obj *prim_accept(void *root, Obj **env, Obj **list) {
+  if (length(*list) != 1) error("accept: not given exactly 1 args");
+  Obj *values = eval_list(root, env, list);
+  if (values->car->type != TINT) error("accept: 1st arg not int");
+
+  int client_fd;
+  int socket_fd = values->car->value;
+  struct sockaddr_in c_addr;
+  socklen_t c_addr_len = sizeof(c_addr);
+
+  if ((client_fd = accept(socket_fd, (struct sockaddr *)&c_addr, &c_addr_len)) < 0) {
+    switch (errno) {
+      case EINTR:
+        return Nil; // accept interupted by a system call
+      case EBADF:
+        error("accept: given socket is not a valid file descriptor");
+      case EINVAL:
+        error("accept: socket is unwilling to accept connections");
+      case ENOTSOCK:
+        error("accept: file descriptor given is not a valid socket");
+      case EOPNOTSUPP:
+        error("accept: socket type is not SOCK_STREAM");
+      case ENOMEM:
+        error("accept: out of memory");
+      case EMFILE:
+        error("accept: process out of file descriptors");
+      case ENFILE:
+        error("accept: system out of file descriptors");
+      default:
+        error("accept: error");
+    }
+  }
+
+  return make_int(root, client_fd);
 }
 
 static void add_primitive(void *root, Obj **env, char *name, Primitive *fn) {
@@ -1317,7 +1449,12 @@ static void define_primitives(void *root, Obj **env) {
   add_primitive(root, env, "seconds", prim_seconds);
   add_primitive(root, env, "sleep", prim_sleep);
   add_primitive(root, env, "exit", prim_exit);
+  add_primitive(root, env, "open", prim_open);
+  add_primitive(root, env, "close", prim_close);
   add_primitive(root, env, "socket", prim_socket);
+  add_primitive(root, env, "bind-inet", prim_bind_inet);
+  add_primitive(root, env, "listen", prim_listen);
+  add_primitive(root, env, "accept", prim_accept);
 }
 
 //======================================================================
