@@ -1649,22 +1649,47 @@ Obj *eval_input(void *root, Obj** env, char *input) {
   return *val;
 }
 
-void setup_repl_history() {
+char *setup_repl_history() {
   char *hist_folder = get_env_value("HOME", ".");
   char *hist_file = ".shi-history";
   int hist_folder_len = strlen(hist_folder);
   int hist_file_len = strlen(hist_file);
-  char hist_path[hist_folder_len + hist_file_len + 2];
+
+  char *hist_path = malloc(sizeof(char) * (hist_folder_len + hist_file_len + 2));
   strcpy(&hist_path[0], hist_folder);
   hist_folder[hist_folder_len] = '/';
   strcpy(&hist_path[hist_folder_len+1], hist_file);
   hist_folder[hist_folder_len + hist_file_len + 1] = '\0';
+
   linenoiseHistoryLoad(hist_path);
+
+  return hist_path;
 }
 
-void setup_repl() {
-  setup_repl_history();
+void setup_repl(void *root, Obj **env) {
+  DEFINE1(root, val);
+  char *line;
+  char *hist_path = setup_repl_history();
+  linenoiseHistorySetMaxLen(1000);
 
+  while ((line = linenoise("shi> ")) != NULL) {
+    if (line[0] != '\0' && line[0] != ',') {
+      *val = eval_input(root, env, line);
+      print(*val);
+      printf("\n");
+      linenoiseHistoryAdd(line);
+      linenoiseHistorySave(hist_path);
+    } else if (!strncmp(line,",quit", 5)) {
+      free(line);
+      break;
+    } else if (line[0] == ',') {
+      printf("Unreconized command: %s\n", line);
+    }
+    free(line);
+  }
+
+  printf("Bye!\n");
+  free(hist_path);
 }
 
 int main(int argc, char **argv) {
@@ -1705,7 +1730,7 @@ int main(int argc, char **argv) {
   }
 
   // Start REPL
-  setup_repl();
+  setup_repl(root, env);
   return 0;
 }
 
