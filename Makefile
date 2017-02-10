@@ -1,13 +1,17 @@
-.PHONY: shi shi0
+CC=cc
+CFLAGS=-std=c99 -g -O2 -Wall
 
-run: build
-	./shi
+.PHONY: clean test
 
-build: shi
+shi: shi.c linenoise.c
+	$(CC) $(CFLAGS) shi.c linenoise.c -o shi
 
-shi: *.go
-	go build -o shi ./cmd/shi/main.go
+clean:
+	rm -f shi *~
 
-link:
-	mkdir -p $(GOPATH)/src/github.com/kiasaki
-	ln -s $(realpath .) $(GOPATH)/src/github.com/kiasaki/shi
+test: shi
+	@./test.sh
+
+format:
+	clang-format shi.c >shi.c.new
+	mv shi.c.new shi.c

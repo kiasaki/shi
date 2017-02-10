@@ -1,0 +1,17 @@
+(sleep 1)
+(prn "1")
+(sleep 1)
+(prn "2")
+(sleep 1)
+(prn "3")
+(exit)
+(module test)
+(import 'shi:http)
+
+(exit)
+(def s (server 8080))
+
+(server-add s :GET (fn (req res)
+  (map-set res :body "Hello world!")))
+
+(server-listen s)

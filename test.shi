@@ -1,17 +1,44 @@
-(sleep 1)
-(prn "1")
-(sleep 1)
-(prn "2")
-(sleep 1)
-(prn "3")
-(exit)
-(module test)
-(import 'shi:http)
+(fn ()
+(println "starting")
 
-(exit)
-(def s (server 8080))
+(def host "0.0.0.0")
+(def port 8080)
+(def backlog-len 32)
 
-(server-add s :GET (fn (req res)
-  (map-set res :body "Hello world!")))
+(def listen-fd (socket PF_INET SOCK_STREAM 0))
 
-(server-listen s)
+(bind-inet listen-fd host port)
+(listen listen-fd backlog-len)
+
+(def *running* t)
+(def client-fd nil)
+
+; Handle SIGINT and gracefully shutdown
+; (signal SIGINT (fn () (set *running* nil)))
+
+(while *running*
+  (set client-fd (accept listen-fd))
+  (write client-fd "HTTP/1.1 200 OK
+Content-Length: 12
+Connection: close
+Content-Type: text/plain
+
+Hello world!")
+  (sleep 500)
+  (close client-fd))
+
+(close listen-fd)
+(exit 0)
+)
+
+(defn read-all (path)
+  (def fd (open path))
+  (def contents "")
+  (def last-read (read fd 255))
+  (while (> (str-len last-read) 0)
+    (set contents (str contents last-read))
+    (set last-read (read fd 255)))
+  (close fd)
+  contents)
+
+(println (read-all "test.txt"))

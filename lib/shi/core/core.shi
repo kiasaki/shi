@@ -1,8 +1,0 @@
-; Load core modules and export definitions to root env
-(load 'shi:core:prelude)
-(shi:core:prelude:import-in (environment-root) "shi:core:prelude" ".")
-(load 'shi:core:list)
-(load 'shi:core:vector)
-(load 'shi:core:string)
-(load 'shi:core:io)
-(import-in (environment-root) "shi:core:io" ".")
