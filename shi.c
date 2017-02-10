@@ -1,5 +1,3 @@
-// This software is in the public domain.
-
 #include <assert.h>
 #include <time.h>
 #include <errno.h>
@@ -13,7 +11,6 @@
 #include <unistd.h>
 #include <string.h>
 #include <strings.h>
-// #include <sys/mman.h>
 
 #include <fcntl.h>
 #include <sys/socket.h>
@@ -35,9 +32,7 @@ static __attribute((noreturn)) void error(char *fmt, ...) {
   exit(1);
 }
 
-//======================================================================
-// Lisp objects
-//======================================================================
+// {{{ type
 
 // The Lisp object type
 enum {
@@ -46,6 +41,7 @@ enum {
   TSTR,
   TCELL,
   TSYMBOL,
+  TREF,
   TPRIMITIVE,
   TFUNCTION,
   TMACRO,
@@ -86,16 +82,18 @@ typedef struct Obj {
     // Int
     int intv;
     // String
-    char str[1];
+    char strv[1];
     // Cell
     struct {
       struct Obj *car;
       struct Obj *cdr;
     };
     // Symbol
-    char name[1];
+    char symv[1];
+    // Reference
+    struct Obj *refv;
     // Primitive
-    Primitive *fn;
+    Primitive *priv;
     // Function or Macro
     struct {
       struct Obj *params;
@@ -127,9 +125,9 @@ static Obj *Cparen = &(Obj){TCPAREN, 0, {0}};
 // avoid using it as a variable name as this is not an array but a list.
 static Obj *Symbols;
 
-//======================================================================
-// Memory management
-//======================================================================
+// }}}
+
+// {{{ memory
 
 // The size of the heap in byte
 static const unsigned int MEMORY_SIZE = 65536;
@@ -265,9 +263,9 @@ static Obj *alloc(void *root, int type, size_t size) {
   return obj;
 }
 
-//======================================================================
-// Garbage collector
-//======================================================================
+// }}}
+
+// {{{ gc
 
 // Cheney's algorithm uses two pointers to keep track of GC status. At first
 // both pointers point to
@@ -310,6 +308,7 @@ static inline Obj *forward(Obj *obj) {
 }
 
 static void *alloc_semispace() {
+  // #include <sys/mman.h>
   // return mmap(NULL, MEMORY_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE |
   // MAP_ANON, -1, 0);
   return malloc(MEMORY_SIZE);
@@ -354,6 +353,9 @@ static void gc(void *root) {
         // Any of the above types does not contain a pointer to a GC-managed
         // object.
         break;
+      case TREF:
+        scan1->refv = forward(scan1->refv);
+        break;
       case TCELL:
         scan1->car = forward(scan1->car);
         scan1->cdr = forward(scan1->cdr);
@@ -385,9 +387,9 @@ static void gc(void *root) {
   gc_running = false;
 }
 
-//======================================================================
-// Constructors
-//======================================================================
+// }}}
+
+// {{{ constructors
 
 static Obj *make_int(void *root, int value) {
   Obj *r = alloc(root, TINT, sizeof(int));
@@ -397,7 +399,7 @@ static Obj *make_int(void *root, int value) {
 
 static Obj *make_string(void *root, char *value) {
   Obj *str = alloc(root, TSTR, strlen(value) + 1);
-  strcpy(str->str, value);
+  strcpy(str->strv, value);
   return str;
 }
 
@@ -410,13 +412,13 @@ static Obj *cons(void *root, Obj **car, Obj **cdr) {
 
 static Obj *make_symbol(void *root, char *name) {
   Obj *sym = alloc(root, TSYMBOL, strlen(name) + 1);
-  strcpy(sym->name, name);
+  strcpy(sym->symv, name);
   return sym;
 }
 
 static Obj *make_primitive(void *root, Primitive *fn) {
   Obj *r = alloc(root, TPRIMITIVE, sizeof(Primitive *));
-  r->fn = fn;
+  r->priv = fn;
   return r;
 }
 
@@ -443,11 +445,9 @@ static Obj *acons(void *root, Obj **x, Obj **y, Obj **a) {
   return cons(root, cell, a);
 }
 
-//======================================================================
-// Parser
-//
-// This is a hand-written recursive-descendent parser.
-//======================================================================
+// }}}
+
+// {{{ reader
 
 #define SYMBOL_MAX_LEN 200
 #define STRING_MAX_LEN 1000
@@ -510,7 +510,7 @@ static Obj *read_list(void *root) {
 // but return the existing one.
 static Obj *intern(void *root, char *name) {
   for (Obj *p = Symbols; p != Nil; p = p->cdr)
-    if (strcmp(name, p->car->name) == 0) return p->car;
+    if (strcmp(name, p->car->symv) == 0) return p->car;
   DEFINE1(sym);
   *sym = make_symbol(root, name);
   Symbols = cons(root, sym, &Symbols);
@@ -632,6 +632,10 @@ static Obj *read_expr(void *root) {
   }
 }
 
+// }}}
+
+// {{{ util + pretty-print
+
 static int unescape(char *dest, char *src) {
   int i = 0;
   while (*src) {
@@ -668,19 +672,25 @@ static int unescape(char *dest, char *src) {
   return i;
 }
 
+
 static char *pr_str(Obj *obj) {
   char *buf = malloc(sizeof(char) * 2048);
+  char *s;
   int len = 0;
 
   switch (obj->type) {
     case TCELL:
       len += sprintf(&buf[len], "(");
       for (;;) {
-        len += sprintf(&buf[len], "%s", pr_str(obj->car));
+        s = pr_str(obj->car);
+        len += sprintf(&buf[len], "%s", s);
+        free(s);
         if (obj->cdr == Nil) break;
         if (obj->cdr->type != TCELL) {
           len += sprintf(&buf[len], " . ");
-          len += sprintf(&buf[len], "%s", pr_str(obj->cdr));
+          s = pr_str(obj->cdr);
+          len += sprintf(&buf[len], "%s", s);
+          free(s);
           break;
         }
         len += sprintf(&buf[len], " ");
@@ -690,7 +700,7 @@ static char *pr_str(Obj *obj) {
       return buf;
     case TSTR:
       len += sprintf(&buf[len], "\"");
-      len += unescape(&buf[len], obj->str);
+      len += unescape(&buf[len], obj->strv);
       len += sprintf(&buf[len], "\"");
       return buf;
 
@@ -700,7 +710,8 @@ static char *pr_str(Obj *obj) {
     return buf
 
       CASE(TINT, "%d", obj->intv);
-      CASE(TSYMBOL, "%s", obj->name);
+      CASE(TSYMBOL, "%s", obj->symv);
+      CASE(TREF, "<ref>");
       CASE(TPRIMITIVE, "<primitive>");
       CASE(TFUNCTION, "<function>");
       CASE(TMACRO, "<macro>");
@@ -730,9 +741,9 @@ static int length(Obj *list) {
   return list == Nil ? len : -1;
 }
 
-//======================================================================
-// Evaluator
-//======================================================================
+// }}}
+
+// {{{ eval
 
 static Obj *eval(void *root, Obj **env, Obj **obj);
 
@@ -805,7 +816,7 @@ static Obj *apply(void *root, Obj **env, Obj **fn, Obj **args) {
   if (!is_list(*args)) {
     error("argument must be a list");
   }
-  if ((*fn)->type == TPRIMITIVE) return (*fn)->fn(root, env, args);
+  if ((*fn)->type == TPRIMITIVE) return (*fn)->priv(root, env, args);
   if ((*fn)->type == TFUNCTION) {
     DEFINE1(eargs);
     *eargs = eval_list(root, env, args);
@@ -847,6 +858,7 @@ static Obj *eval(void *root, Obj **env, Obj **obj) {
   switch ((*obj)->type) {
     case TINT:
     case TSTR:
+    case TREF:
     case TPRIMITIVE:
     case TFUNCTION:
     case TMACRO:
@@ -857,7 +869,7 @@ static Obj *eval(void *root, Obj **env, Obj **obj) {
     case TSYMBOL: {
       // Variable
       Obj *bind = find(env, *obj);
-      if (!bind) error("Undefined symbol: %s", (*obj)->name);
+      if (!bind) error("Undefined symbol: %s", (*obj)->symv);
       return bind->cdr;
     }
     case TCELL: {
@@ -878,95 +890,11 @@ static Obj *eval(void *root, Obj **env, Obj **obj) {
   }
 }
 
-//======================================================================
-// Primitive functions and special forms
-//======================================================================
+// }}}
 
-// 'expr
-static Obj *prim_quote(void *root, Obj **env, Obj **list) {
-  (void)root;
-  (void)env;
-  if (length(*list) != 1) error("Malformed quote");
-  return (*list)->car;
-}
+// {{{ primitives
 
-// (cons expr expr)
-static Obj *prim_cons(void *root, Obj **env, Obj **list) {
-  if (length(*list) != 2) error("Malformed cons");
-  Obj *cell = eval_list(root, env, list);
-  cell->cdr = cell->cdr->car;
-  return cell;
-}
-
-// (car <cell>)
-static Obj *prim_car(void *root, Obj **env, Obj **list) {
-  Obj *args = eval_list(root, env, list);
-  if (args->car->type != TCELL || args->cdr != Nil) error("Malformed car");
-  return args->car->car;
-}
-
-// (cdr <cell>)
-static Obj *prim_cdr(void *root, Obj **env, Obj **list) {
-  Obj *args = eval_list(root, env, list);
-  if (args->car->type != TCELL || args->cdr != Nil) error("Malformed cdr");
-  return args->car->cdr;
-}
-
-// (set <symbol> expr)
-static Obj *prim_set(void *root, Obj **env, Obj **list) {
-  if (length(*list) != 2 || (*list)->car->type != TSYMBOL)
-    error("Malformed set");
-  DEFINE2(bind, value);
-  *bind = find(env, (*list)->car);
-  if (!*bind) error("Unbound variable %s", (*list)->car->name);
-  *value = (*list)->cdr->car;
-  *value = eval(root, env, value);
-  (*bind)->cdr = *value;
-  return *value;
-}
-
-// (setcar <cell> expr)
-static Obj *prim_setcar(void *root, Obj **env, Obj **list) {
-  DEFINE1(args);
-  *args = eval_list(root, env, list);
-  if (length(*args) != 2 || (*args)->car->type != TCELL)
-    error("Malformed setcar");
-  (*args)->car->car = (*args)->cdr->car;
-  return (*args)->car;
-}
-
-// (str str0 str1 str3)
-static Obj *prim_str(void *root, Obj **env, Obj **list) {
-  // Ensure we are only dealing with strings and compute final length
-  int len = 0;
-  Obj *args = eval_list(root, env, list);
-  for (Obj *a = args; a != Nil; a = a->cdr) {
-    if (a->car->type != TSTR) error("str: argument not a string");
-    len += strlen(a->car->str);
-  }
-
-  char ret[len+1];
-  char *last = &ret[0];
-
-  // Append strings to return value
-  for (Obj *a = args; a != Nil; a = a->cdr) {
-    last = stpcpy(last, a->car->str);
-  }
-
-  ret[len+1] = '\0';
-  return make_string(root, &ret[0]);
-}
-
-// (str-len str)
-static Obj *prim_str_len(void *root, Obj **env, Obj **list) {
-  DEFINE1(args);
-  *args = eval_list(root, env, list);
-  if (length(*args) != 1 || (*args)->car->type != TSTR) {
-    error("str-len: 1st arg is not a string");
-  }
-
-  return make_int(root, strlen((*args)->car->str));
-}
+// {{{ primitives: language
 
 // (do body ...)
 static Obj *prim_do(void *root, Obj **env, Obj **list) {
@@ -983,47 +911,6 @@ static Obj *prim_while(void *root, Obj **env, Obj **list) {
     eval_list(root, env, exprs);
   }
   return Nil;
-}
-
-// (gensym)
-static Obj *prim_gensym(void *root, Obj **env, Obj **list) {
-  (void)env;
-  (void)list;
-  static int count = 0;
-  char buf[16];
-  snprintf(buf, sizeof(buf), "G__%d", count++);
-  return make_symbol(root, buf);
-}
-
-// (+ <integer> ...)
-static Obj *prim_plus(void *root, Obj **env, Obj **list) {
-  int sum = 0;
-  for (Obj *args = eval_list(root, env, list); args != Nil; args = args->cdr) {
-    if (args->car->type != TINT) error("+ takes only numbers");
-    sum += args->car->intv;
-  }
-  return make_int(root, sum);
-}
-
-// (- <integer> ...)
-static Obj *prim_minus(void *root, Obj **env, Obj **list) {
-  Obj *args = eval_list(root, env, list);
-  for (Obj *p = args; p != Nil; p = p->cdr)
-    if (p->car->type != TINT) error("- takes only numbers");
-  if (args->cdr == Nil) return make_int(root, -args->car->intv);
-  int r = args->car->intv;
-  for (Obj *p = args->cdr; p != Nil; p = p->cdr) r -= p->car->intv;
-  return make_int(root, r);
-}
-
-// (< <integer> <integer>)
-static Obj *prim_lt(void *root, Obj **env, Obj **list) {
-  Obj *args = eval_list(root, env, list);
-  if (length(args) != 2) error("malformed <");
-  Obj *x = args->car;
-  Obj *y = args->cdr->car;
-  if (x->type != TINT || y->type != TINT) error("< takes only numbers");
-  return x->intv < y->intv ? True : Nil;
 }
 
 static Obj *handle_function(void *root, Obj **env, Obj **list, int type) {
@@ -1068,12 +955,17 @@ static Obj *prim_def(void *root, Obj **env, Obj **list) {
   return *value;
 }
 
-// (macro-expand expr)
-static Obj *prim_macro_expand(void *root, Obj **env, Obj **list) {
-  if (length(*list) != 1) error("Malformed macro-expand");
-  DEFINE1(body);
-  *body = (*list)->car;
-  return macroexpand(root, env, body);
+// (set <symbol> expr)
+static Obj *prim_set(void *root, Obj **env, Obj **list) {
+  if (length(*list) != 2 || (*list)->car->type != TSYMBOL)
+    error("Malformed set");
+  DEFINE2(bind, value);
+  *bind = find(env, (*list)->car);
+  if (!*bind) error("Unbound variable %s", (*list)->car->symv);
+  *value = (*list)->cdr->car;
+  *value = eval(root, env, value);
+  (*bind)->cdr = *value;
+  return *value;
 }
 
 // (pr-str expr)
@@ -1110,15 +1002,6 @@ static Obj *prim_if(void *root, Obj **env, Obj **list) {
   return prim_if(root, env, els);
 }
 
-// (= <integer> <integer>)
-static Obj *prim_num_eq(void *root, Obj **env, Obj **list) {
-  if (length(*list) != 2) error("Malformed =");
-  Obj *values = eval_list(root, env, list);
-  Obj *x = values->car;
-  Obj *y = values->cdr->car;
-  if (x->type != TINT || y->type != TINT) error("= only takes numbers");
-  return x->intv == y->intv ? True : Nil;
-}
 
 // (eq expr expr)
 static Obj *prim_eq(void *root, Obj **env, Obj **list) {
@@ -1170,6 +1053,9 @@ static Obj *prim_type(void *root, Obj **env, Obj **list) {
     case TSTR:
       name = "str";
       break;
+    case TREF:
+      name = "ref";
+      break;
     case TCELL:
       if (values->car->cdr != Nil && values->car->cdr->type != TCELL) {
         name = "cons";
@@ -1198,6 +1084,159 @@ static Obj *prim_type(void *root, Obj **env, Obj **list) {
   return *k;
 }
 
+// }}}
+
+// {{{ primitives: marco
+
+// (quote expr)
+static Obj *prim_quote(void *root, Obj **env, Obj **list) {
+  (void)root;
+  (void)env;
+  if (length(*list) != 1) error("Malformed quote");
+  return (*list)->car;
+}
+
+// (macro-expand expr)
+static Obj *prim_macro_expand(void *root, Obj **env, Obj **list) {
+  if (length(*list) != 1) error("Malformed macro-expand");
+  DEFINE1(body);
+  *body = (*list)->car;
+  return macroexpand(root, env, body);
+}
+
+// (gensym)
+static Obj *prim_gensym(void *root, Obj **env, Obj **list) {
+  (void)env;
+  (void)list;
+  static int count = 0;
+  char buf[16];
+  snprintf(buf, sizeof(buf), "G__%d", count++);
+  return make_symbol(root, buf);
+}
+
+// }}}
+
+// {{{ primitives: list
+
+// (cons expr expr)
+static Obj *prim_cons(void *root, Obj **env, Obj **list) {
+  if (length(*list) != 2) error("Malformed cons");
+  Obj *cell = eval_list(root, env, list);
+  cell->cdr = cell->cdr->car;
+  return cell;
+}
+
+// (car <cell>)
+static Obj *prim_car(void *root, Obj **env, Obj **list) {
+  Obj *args = eval_list(root, env, list);
+  if (args->car->type != TCELL || args->cdr != Nil) error("Malformed car");
+  return args->car->car;
+}
+
+// (cdr <cell>)
+static Obj *prim_cdr(void *root, Obj **env, Obj **list) {
+  Obj *args = eval_list(root, env, list);
+  if (args->car->type != TCELL || args->cdr != Nil) error("Malformed cdr");
+  return args->car->cdr;
+}
+
+
+// (setcar <cell> expr)
+static Obj *prim_setcar(void *root, Obj **env, Obj **list) {
+  DEFINE1(args);
+  *args = eval_list(root, env, list);
+  if (length(*args) != 2 || (*args)->car->type != TCELL)
+    error("Malformed setcar");
+  (*args)->car->car = (*args)->cdr->car;
+  return (*args)->car;
+}
+
+// }}}
+
+// {{{ primitives: string
+
+// (str str0 str1 str3)
+static Obj *prim_str(void *root, Obj **env, Obj **list) {
+  // Ensure we are only dealing with strings and compute final length
+  int len = 0;
+  Obj *args = eval_list(root, env, list);
+  for (Obj *a = args; a != Nil; a = a->cdr) {
+    if (a->car->type != TSTR) error("str: argument not a string");
+    len += strlen(a->car->strv);
+  }
+
+  char ret[len+1];
+  char *last = &ret[0];
+
+  // Append strings to return value
+  for (Obj *a = args; a != Nil; a = a->cdr) {
+    last = stpcpy(last, a->car->strv);
+  }
+
+  ret[len+1] = '\0';
+  return make_string(root, &ret[0]);
+}
+
+// (str-len str)
+static Obj *prim_str_len(void *root, Obj **env, Obj **list) {
+  DEFINE1(args);
+  *args = eval_list(root, env, list);
+  if (length(*args) != 1 || (*args)->car->type != TSTR) {
+    error("str-len: 1st arg is not a string");
+  }
+
+  return make_int(root, strlen((*args)->car->strv));
+}
+
+// }}}
+
+// {{{ primitives: math
+
+// (+ <integer> ...)
+static Obj *prim_plus(void *root, Obj **env, Obj **list) {
+  int sum = 0;
+  for (Obj *args = eval_list(root, env, list); args != Nil; args = args->cdr) {
+    if (args->car->type != TINT) error("+ takes only numbers");
+    sum += args->car->intv;
+  }
+  return make_int(root, sum);
+}
+
+// (- <integer> ...)
+static Obj *prim_minus(void *root, Obj **env, Obj **list) {
+  Obj *args = eval_list(root, env, list);
+  for (Obj *p = args; p != Nil; p = p->cdr)
+    if (p->car->type != TINT) error("- takes only numbers");
+  if (args->cdr == Nil) return make_int(root, -args->car->intv);
+  int r = args->car->intv;
+  for (Obj *p = args->cdr; p != Nil; p = p->cdr) r -= p->car->intv;
+  return make_int(root, r);
+}
+
+// (< <integer> <integer>)
+static Obj *prim_lt(void *root, Obj **env, Obj **list) {
+  Obj *args = eval_list(root, env, list);
+  if (length(args) != 2) error("malformed <");
+  Obj *x = args->car;
+  Obj *y = args->cdr->car;
+  if (x->type != TINT || y->type != TINT) error("< takes only numbers");
+  return x->intv < y->intv ? True : Nil;
+}
+
+// (= <integer> <integer>)
+static Obj *prim_num_eq(void *root, Obj **env, Obj **list) {
+  if (length(*list) != 2) error("Malformed =");
+  Obj *values = eval_list(root, env, list);
+  Obj *x = values->car;
+  Obj *y = values->cdr->car;
+  if (x->type != TINT || y->type != TINT) error("= only takes numbers");
+  return x->intv == y->intv ? True : Nil;
+}
+
+// }}}
+
+// {{{ primitives: os
+
 // (write "str")
 static Obj *prim_write(void *root, Obj **env, Obj **list) {
   if (length(*list) != 2) error("write: not given exactly 2 args");
@@ -1208,7 +1247,7 @@ static Obj *prim_write(void *root, Obj **env, Obj **list) {
   if (values->cdr->car->type != TSTR) error("write: 2nd arg not string");
 
   int fd = values->car->intv;
-  char *str = values->cdr->car->str;
+  char *str = values->cdr->car->strv;
 
   if (write(fd, str, strlen(str)) < 0)
     error("write: error");
@@ -1278,14 +1317,14 @@ static Obj *prim_open(void *root, Obj **env, Obj **list) {
 
   // Check 2nd param (can be either 'append or 'truncate)
   Obj *rest = values->cdr;
-  if (rest != Nil && rest->car->type == TSYMBOL && strncmp(rest->car->name, "truncate", 8) == 0) {
+  if (rest != Nil && rest->car->type == TSYMBOL && strncmp(rest->car->symv, "truncate", 8) == 0) {
     flags = flags | O_TRUNC;
   } else {
     flags = flags | O_APPEND;
   }
 
   int fd;
-  if ((fd = open(values->car->str, flags)) < 0) {
+  if ((fd = open(values->car->strv, flags)) < 0) {
     error("open: error opening file");
   }
   return make_int(root, fd);
@@ -1302,6 +1341,10 @@ static Obj *prim_close(void *root, Obj **env, Obj **list) {
   }
   return Nil;
 }
+
+// }}}
+
+// {{{ primitives: net
 
 // (socket domain type protocol) -> fd
 static Obj *prim_socket(void *root, Obj **env, Obj **list) {
@@ -1332,7 +1375,7 @@ static Obj *prim_bind_inet(void *root, Obj **env, Obj **list) {
   if (values->cdr->cdr->car->type != TINT) error("bind-inet: 3rd arg not int");
 
   int socket_fd = values->car->intv;
-  char *host = values->cdr->car->str;
+  char *host = values->cdr->car->strv;
   int port = values->cdr->cdr->car->intv;
 
   struct sockaddr_in serv_addr;
@@ -1414,6 +1457,7 @@ static Obj *prim_accept(void *root, Obj **env, Obj **list) {
 
   return make_int(root, client_fd);
 }
+// }}}
 
 static void add_primitive(void *root, Obj **env, char *name, Primitive *fn) {
   DEFINE2(sym, prim);
@@ -1499,10 +1543,9 @@ static void define_primitives(void *root, Obj **env) {
   add_primitive(root, env, "listen", prim_listen);
   add_primitive(root, env, "accept", prim_accept);
 }
+// }}}
 
-//======================================================================
-// Entry point
-//======================================================================
+// {{{ main
 
 // Returns true if the environment variable is defined and not the empty string.
 static bool getEnvFlag(char *name) {
@@ -1570,3 +1613,5 @@ int main(int argc, char **argv) {
     printf("\n");
   }
 }
+
+// }}}
