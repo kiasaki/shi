@@ -1657,9 +1657,9 @@ char *setup_repl_history() {
 
   char *hist_path = malloc(sizeof(char) * (hist_folder_len + hist_file_len + 2));
   strcpy(&hist_path[0], hist_folder);
-  hist_folder[hist_folder_len] = '/';
+  hist_path[hist_folder_len] = '/';
   strcpy(&hist_path[hist_folder_len+1], hist_file);
-  hist_folder[hist_folder_len + hist_file_len + 1] = '\0';
+  hist_folder[hist_folder_len + hist_file_len] = '\0';
 
   linenoiseHistoryLoad(hist_path);
 
