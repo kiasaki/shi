@@ -114,10 +114,10 @@ typedef struct Obj {
 FILE *current_file;
 
 // Constants
-static Obj *True = &(Obj){TTRUE, 0, {0}};
-static Obj *Nil = &(Obj){TNIL, 0, {0}};
-static Obj *Dot = &(Obj){TDOT, 0, {0}};
-static Obj *Cparen = &(Obj){TCPAREN, 0, {0}};
+static Obj *True = &(Obj){TTRUE};
+static Obj *Nil = &(Obj){TNIL};
+static Obj *Dot = &(Obj){TDOT};
+static Obj *Cparen = &(Obj){TCPAREN};
 
 // The list containing all symbols. Such data structure is traditionally called
 // the "obarray", but I
@@ -178,30 +178,30 @@ static void gc(void *root);
 
 #define ROOT_END ((void *)-1)
 
-#define ADD_ROOT(size)                                      \
+#define ADD_ROOT(root, size)                                      \
   void *root_ADD_ROOT_[size + 2];                           \
   root_ADD_ROOT_[0] = root;                                 \
   for (int i = 1; i <= size; i++) root_ADD_ROOT_[i] = NULL; \
   root_ADD_ROOT_[size + 1] = ROOT_END;                      \
   root = root_ADD_ROOT_
 
-#define DEFINE1(var1) \
-  ADD_ROOT(1);        \
+#define DEFINE1(root, var1) \
+  ADD_ROOT(root, 1);        \
   Obj **var1 = (Obj **)(root_ADD_ROOT_ + 1)
 
-#define DEFINE2(var1, var2)                  \
-  ADD_ROOT(2);                               \
+#define DEFINE2(root, var1, var2)                  \
+  ADD_ROOT(root, 2);                               \
   Obj **var1 = (Obj **)(root_ADD_ROOT_ + 1); \
   Obj **var2 = (Obj **)(root_ADD_ROOT_ + 2)
 
-#define DEFINE3(var1, var2, var3)            \
-  ADD_ROOT(3);                               \
+#define DEFINE3(root, var1, var2, var3)            \
+  ADD_ROOT(root, 3);                               \
   Obj **var1 = (Obj **)(root_ADD_ROOT_ + 1); \
   Obj **var2 = (Obj **)(root_ADD_ROOT_ + 2); \
   Obj **var3 = (Obj **)(root_ADD_ROOT_ + 3)
 
-#define DEFINE4(var1, var2, var3, var4)      \
-  ADD_ROOT(4);                               \
+#define DEFINE4(root, var1, var2, var3, var4)      \
+  ADD_ROOT(root, 4);                               \
   Obj **var1 = (Obj **)(root_ADD_ROOT_ + 1); \
   Obj **var2 = (Obj **)(root_ADD_ROOT_ + 2); \
   Obj **var3 = (Obj **)(root_ADD_ROOT_ + 3); \
@@ -220,38 +220,31 @@ static inline size_t roundup(size_t var, size_t size) {
 // Allocates memory block. This may start GC if we don't have enough memory.
 static Obj *alloc(void *root, int type, size_t size) {
   // The object must be large enough to contain a pointer for the forwarding
-  // pointer. Make it
-  // larger if it's smaller than that.
+  // pointer. Make it larger if it's smaller than that.
   size = roundup(size, sizeof(void *));
 
   // Add the size of the type tag and size fields.
   size += offsetof(Obj, intv);
 
   // Round up the object size to the nearest alignment boundary, so that the
-  // next object will be
-  // allocated at the proper alignment boundary. Currently we align the object
-  // at the same
-  // boundary as the pointer.
+  // next object will be allocated at the proper alignment boundary. Currently
+  // we align the object at the same boundary as the pointer.
   size = roundup(size, sizeof(void *));
 
   // If the debug flag is on, allocate a new memory space to force all the
-  // existing objects to
-  // move to new addresses, to invalidate the old addresses. By doing this the
-  // GC behavior becomes
-  // more predictable and repeatable. If there's a memory bug that the C
-  // variable has a direct
-  // reference to a Lisp object, the pointer will become invalid by this GC
-  // call. Dereferencing
-  // that will immediately cause SEGV.
+  // existing objects to move to new addresses, to invalidate the old addresses.
+  // By doing this the GC behavior becomes more predictable and repeatable. If
+  // there's a memory bug that the C variable has a direct reference to a Lisp
+  // object, the pointer will become invalid by this GC call. Dereferencing that
+  // will immediately cause SEGV.
   if (always_gc && !gc_running) gc(root);
 
   // Otherwise, run GC only when the available memory is not large enough.
   if (!always_gc && MEMORY_SIZE < mem_nused + size) gc(root);
 
   // Terminate the program if we couldn't satisfy the memory request. This can
-  // happen if the
-  // requested size was too large or the from-space was filled with too many
-  // live objects.
+  // happen if the requested size was too large or the from-space was filled
+  // with too many live objects.
   if (MEMORY_SIZE < mem_nused + size) error("Memory exhausted");
 
   // Allocate the object.
@@ -313,12 +306,19 @@ static void *alloc_semispace() {
   return malloc(MEMORY_SIZE);
 }
 
+static char *pr_str(Obj *);
+
 // Copies the root objects.
 static void forward_root_objects(void *root) {
   Symbols = forward(Symbols);
-  for (void **frame = root; frame; frame = *(void ***)frame)
-    for (int i = 1; frame[i] != ROOT_END; i++)
-      if (frame[i]) frame[i] = forward(frame[i]);
+  for (void **frame = root; frame; frame = *(void ***)frame) {
+    for (int i = 1; frame[i] != ROOT_END; i++) {
+      if (frame[i]) {
+        printf("%d %c\n", i, ((Obj *)frame[i]) == Nil ? 'y' : 'n');
+        frame[i] = forward(frame[i]);
+      }
+    }
+  }
 }
 
 // Implements Cheney's copying garbage collection algorithm.
@@ -436,206 +436,9 @@ struct Obj *make_env(void *root, Obj **vars, Obj **up) {
 
 // Returns ((x . y) . a)
 static Obj *acons(void *root, Obj **x, Obj **y, Obj **a) {
-  DEFINE1(cell);
+  DEFINE1(root, cell);
   *cell = cons(root, x, y);
   return cons(root, cell, a);
-}
-
-// }}}
-
-// {{{ reader
-
-#define SYMBOL_MAX_LEN 200
-#define STRING_MAX_LEN 1000
-const char symbol_chars[] = "~!@#$%^&*-_=+:/?<>";
-
-static Obj *read_expr(void *root);
-
-static int peek(void) {
-  int c = getc(current_file);
-  ungetc(c, current_file);
-  return c;
-}
-
-// Destructively reverses the given list.
-static Obj *reverse(Obj *p) {
-  Obj *ret = Nil;
-  while (p != Nil) {
-    Obj *head = p;
-    p = p->cdr;
-    head->cdr = ret;
-    ret = head;
-  }
-  return ret;
-}
-
-// Skips the input until newline is found. Newline is one of \r, \r\n or \n.
-static void skip_line(void) {
-  for (;;) {
-    int c = getc(current_file);
-    if (c == EOF || c == '\n') return;
-    if (c == '\r') {
-      if (peek() == '\n') getc(current_file);
-      return;
-    }
-  }
-}
-
-// Reads a list. Note that '(' has already been read.
-static Obj *read_list(void *root) {
-  DEFINE3(obj, head, last);
-  *head = Nil;
-  for (;;) {
-    *obj = read_expr(root);
-    if (!*obj) error("Unclosed parenthesis");
-    if (*obj == Cparen) return reverse(*head);
-    if (*obj == Dot) {
-      *last = read_expr(root);
-      if (read_expr(root) != Cparen)
-        error("Closed parenthesis expected after dot");
-      Obj *ret = reverse(*head);
-      (*head)->cdr = *last;
-      return ret;
-    }
-    *head = cons(root, obj, head);
-  }
-}
-
-// May create a new symbol. If there's a symbol with the same name, it will not
-// create a new symbol but return the existing one.
-static Obj *intern(void *root, char *name) {
-  for (Obj *p = Symbols; p != Nil; p = p->cdr)
-    if (strcmp(name, p->car->symv) == 0) return p->car;
-  DEFINE1(sym);
-  *sym = make_symbol(root, name);
-  Symbols = cons(root, sym, &Symbols);
-  return *sym;
-}
-
-// 'def -> (quote def)
-static Obj *read_quote(void *root) {
-  DEFINE2(sym, tmp);
-  *sym = intern(root, "quote");
-  *tmp = read_expr(root);
-  *tmp = cons(root, tmp, &Nil);
-  *tmp = cons(root, sym, tmp);
-  return *tmp;
-}
-
-// `(list a) -> (quasiquote (list a))
-static Obj *read_quasiquote(void *root) {
-  DEFINE2(sym, tmp);
-  *sym = intern(root, "quasiquote");
-  *tmp = read_expr(root);
-  *tmp = cons(root, tmp, &Nil);
-  *tmp = cons(root, sym, tmp);
-  return *tmp;
-}
-
-// @b -> (unbox b)
-static Obj *read_unbox(void *root) {
-  DEFINE2(sym, tmp);
-  *sym = intern(root, "unbox");
-  *tmp = read_expr(root);
-  *tmp = cons(root, tmp, &Nil);
-  *tmp = cons(root, sym, tmp);
-  return *tmp;
-}
-
-static Obj *read_unquote(void *root) {
-  DEFINE2(sym, tmp);
-  if (peek() == '@') {
-    getc(current_file);
-    *sym = intern(root, "unquote-splicing");
-  } else {
-    *sym = intern(root, "unquote");
-  }
-  *tmp = read_expr(root);
-  *tmp = cons(root, tmp, &Nil);
-  *tmp = cons(root, sym, tmp);
-  return *tmp;
-}
-
-static int read_number(int val) {
-  while (isdigit(peek())) val = val * 10 + (getc(current_file) - '0');
-  return val;
-}
-
-static Obj *read_string(void *root) {
-  char buf[STRING_MAX_LEN + 1];
-  int len = 0;
-  while (peek() != '"' || buf[len - 1] == '\\') {
-    if (STRING_MAX_LEN <= len) {
-      error("String too long");
-    }
-    buf[len++] = getc(current_file);
-
-    // handle escapes
-    bool is_escape = buf[len - 2] == '\\';
-    char current_c = buf[len - 1];
-    if (is_escape && current_c == 'n') {
-      buf[len - 2] = '\n';
-      len--;
-    } else if (is_escape && current_c == 'r') {
-      buf[len - 2] = '\r';
-      len--;
-    } else if (is_escape && current_c == 't') {
-      buf[len - 2] = '\t';
-      len--;
-    } else if (is_escape && current_c == '"') {
-      buf[len - 2] = '\"';
-      len--;
-    } else if (is_escape && current_c == '\\') {
-      buf[len - 2] = '\\';
-      len--;
-    }
-    // TODO Handle hexadecial char exacpes (\x123)
-  }
-  buf[len] = '\0';
-
-  // consume closing "
-  getc(current_file);
-
-  // create str
-  DEFINE1(tmp);
-  *tmp = make_string(root, buf);
-  return *tmp;
-}
-
-static Obj *read_symbol(void *root, char c) {
-  char buf[SYMBOL_MAX_LEN + 1];
-  buf[0] = c;
-  int len = 1;
-  while (isalnum(peek()) || strchr(symbol_chars, peek())) {
-    if (SYMBOL_MAX_LEN <= len) error("Symbol name too long");
-    buf[len++] = getc(current_file);
-  }
-  buf[len] = '\0';
-  return intern(root, buf);
-}
-
-static Obj *read_expr(void *root) {
-  for (;;) {
-    int c = getc(current_file);
-    if (c == ' ' || c == '\n' || c == '\r' || c == '\t') continue;
-    if (c == EOF) return NULL;
-    if (c == ';') {
-      skip_line();
-      continue;
-    }
-    if (c == '(') return read_list(root);
-    if (c == ')') return Cparen;
-    if (c == '.') return Dot;
-    if (c == '\'') return read_quote(root);
-    if (c == '`') return read_quasiquote(root);
-    if (c == ',') return read_unquote(root);
-    if (c == '@') return read_unbox(root);
-    if (c == '"') return read_string(root);
-    if (isdigit(c)) return make_int(root, read_number(c - '0'));
-    if (c == '-' && isdigit(peek())) return make_int(root, -read_number(0));
-    if (isalpha(c) || strchr(symbol_chars, c)) return read_symbol(root, c);
-    error("Don't know how to handle %c", c);
-  }
 }
 
 // }}}
@@ -677,7 +480,6 @@ static int unescape(char *dest, char *src) {
   }
   return i;
 }
-
 
 static char *pr_str(Obj *obj) {
   char *buf = malloc(sizeof(char) * 2048);
@@ -727,6 +529,9 @@ static char *pr_str(Obj *obj) {
 #undef CASE
 
     default:
+      // DEBUG
+      // len += sprintf(&buf[len], "<tag %d>", obj->type);
+      // return buf;
       free(buf);
       error("Bug: print: Unknown tag type: %d", obj->type);
   }
@@ -746,6 +551,239 @@ static int length(Obj *list) {
   return list == Nil ? len : -1;
 }
 
+// Destructively reverses the given list.
+static Obj *reverse(Obj *p) {
+  Obj *ret = Nil;
+  while (p != Nil) {
+    Obj *head = p;
+    p = p->cdr;
+    head->cdr = ret;
+    ret = head;
+  }
+  return ret;
+}
+
+// May create a new symbol. If there's a symbol with the same name, it will not
+// create a new symbol but return the existing one.
+static Obj *intern(void *root, char *name) {
+  for (Obj *p = Symbols; p != Nil; p = p->cdr)
+    if (strcmp(name, p->car->symv) == 0) return p->car;
+  DEFINE1(root, sym);
+  *sym = make_symbol(root, name);
+  Symbols = cons(root, sym, &Symbols);
+  return *sym;
+}
+
+// }}}
+
+// {{{ reader
+
+#define SYMBOL_MAX_LEN 200
+#define STRING_MAX_LEN 1000
+const char symbol_chars[] = "~!#$%^&*-_=+:/?<>";
+
+typedef struct Reader {
+  int pos;
+  int size;
+  void *root;
+  char *input;
+} Reader;
+
+static Obj *reader_expr(Reader *r);
+
+static Reader *reader_new(char *input, void *root) {
+  Reader *r = malloc(sizeof(Reader));
+  r->pos = -1;
+  r->size = strlen(input);
+  r->root = root;
+  r->input = malloc(sizeof(char) * (r->size + 1));
+  strcpy(r->input, input);
+  return r;
+}
+
+static void reader_destroy(Reader *r) {
+  free(r->input);
+  free(r);
+}
+
+static int reader_peek(Reader *r) {
+  if (r->pos == r->size) {
+    return EOF;
+  }
+  return r->input[r->pos + 1];
+}
+
+static int reader_next(Reader *r) {
+  if (r->pos == r->size) {
+    return EOF;
+  }
+  r->pos++;
+  return r->input[r->pos];
+}
+
+// Skips the input until newline is found. Newline is one of \r, \r\n or \n.
+static void reader_skip_line(Reader *r) {
+  for (;;) {
+    int c = reader_next(r);
+    if (c == EOF || c == '\n') {
+      return;
+    }
+    if (c == '\r') {
+      if (reader_peek(r) == '\n') {
+        reader_next(r);
+      }
+      return;
+    }
+  }
+}
+
+// Reads a list. Note that '(' has already been read.
+static Obj *reader_list(Reader *r) {
+  DEFINE3(r->root, obj, head, last);
+  *head = Nil;
+  for (;;) {
+    *obj = reader_expr(r);
+    if (!*obj) error("Unclosed parenthesis");
+    if (*obj == Cparen) return reverse(*head);
+    if (*obj == Dot) {
+      *last = reader_expr(r);
+      if (reader_expr(r) != Cparen)
+        error("Closed parenthesis expected after dot");
+      Obj *ret = reverse(*head);
+      (*head)->cdr = *last;
+      return ret;
+    }
+    *head = cons(r->root, obj, head);
+  }
+}
+
+// 'def -> (quote def)
+static Obj *read_quote(Reader* r) {
+  DEFINE2(r->root, sym, tmp);
+  *sym = intern(r->root, "quote");
+  *tmp = reader_expr(r);
+  *tmp = cons(r->root, tmp, &Nil);
+  *tmp = cons(r->root, sym, tmp);
+  return *tmp;
+}
+
+// `(list a) -> (quasiquote (list a))
+static Obj *read_quasiquote(Reader *r) {
+  DEFINE2(r->root, sym, tmp);
+  *sym = intern(r->root, "quasiquote");
+  *tmp = reader_expr(r);
+  *tmp = cons(r->root, tmp, &Nil);
+  *tmp = cons(r->root, sym, tmp);
+  return *tmp;
+}
+
+// @b -> (unbox b)
+static Obj *read_unbox(Reader *r) {
+  DEFINE2(r->root, sym, tmp);
+  *sym = intern(r->root, "unbox");
+  *tmp = reader_expr(r);
+  *tmp = cons(r->root, tmp, &Nil);
+  *tmp = cons(r->root, sym, tmp);
+  return *tmp;
+}
+
+static Obj *read_unquote(Reader *r) {
+  DEFINE2(r->root, sym, tmp);
+  if (reader_peek(r) == '@') {
+    reader_next(r);
+    *sym = intern(r->root, "unquote-splicing");
+  } else {
+    *sym = intern(r->root, "unquote");
+  }
+  *tmp = reader_expr(r);
+  *tmp = cons(r->root, tmp, &Nil);
+  *tmp = cons(r->root, sym, tmp);
+  return *tmp;
+}
+
+static int read_number(Reader *r, int val) {
+  while (isdigit(reader_peek(r))) {
+    val = val * 10 + (reader_next(r) - '0');
+  }
+  return val;
+}
+
+static Obj *read_string(Reader *r) {
+  char buf[STRING_MAX_LEN + 1];
+  int len = 0;
+  while (reader_peek(r) != '"' || buf[len - 1] == '\\') {
+    if (STRING_MAX_LEN <= len) {
+      error("String too long");
+    }
+    buf[len++] = reader_next(r);
+
+    // handle escapes
+    bool is_escape = buf[len - 2] == '\\';
+    char current_c = buf[len - 1];
+    if (is_escape && current_c == 'n') {
+      buf[len - 2] = '\n';
+      len--;
+    } else if (is_escape && current_c == 'r') {
+      buf[len - 2] = '\r';
+      len--;
+    } else if (is_escape && current_c == 't') {
+      buf[len - 2] = '\t';
+      len--;
+    } else if (is_escape && current_c == '"') {
+      buf[len - 2] = '\"';
+      len--;
+    } else if (is_escape && current_c == '\\') {
+      buf[len - 2] = '\\';
+      len--;
+    }
+    // TODO Handle hexadecial char exacpes (\x123)
+  }
+  buf[len] = '\0';
+
+  // consume closing "
+  reader_next(r);
+
+  // create str
+  DEFINE1(r->root, tmp);
+  *tmp = make_string(r->root, buf);
+  return *tmp;
+}
+
+static Obj *read_symbol(Reader *r, char c) {
+  char buf[SYMBOL_MAX_LEN + 1];
+  buf[0] = c;
+  int len = 1;
+  while (isalnum(reader_peek(r)) || strchr(symbol_chars, reader_peek(r))) {
+    if (SYMBOL_MAX_LEN <= len) {
+      error("Symbol name too long");
+    }
+    buf[len++] = reader_next(r);
+  }
+  buf[len] = '\0';
+  return intern(r->root, buf);
+}
+
+static Obj *reader_expr(Reader *r) {
+  for (;;) {
+    int c = reader_next(r);
+    if (c == ' ' || c == '\n' || c == '\r' || c == '\t') continue;
+    if (c == EOF) return NULL;
+    if (c == ';') {reader_skip_line(r); continue;}
+    if (c == '(') return reader_list(r);
+    if (c == ')') return Cparen;
+    if (c == '.') return Dot;
+    if (c == '\'') return read_quote(r);
+    if (c == '`') return read_quasiquote(r);
+    if (c == ',') return read_unquote(r);
+    if (c == '@') return read_unbox(r);
+    if (c == '"') return read_string(r);
+    if (isdigit(c)) return make_int(r->root, read_number(r, c - '0'));
+    if (c == '-' && isdigit(reader_peek(r))) return make_int(r->root, -read_number(r, 0));
+    if (isalpha(c) || strchr(symbol_chars, c)) return read_symbol(r, c);
+    error("Don't know how to handle %c", c);
+  }
+}
+
 // }}}
 
 // {{{ eval
@@ -753,7 +791,7 @@ static int length(Obj *list) {
 static Obj *eval(void *root, Obj **env, Obj **obj);
 
 static void add_variable(void *root, Obj **env, Obj **sym, Obj **val) {
-  DEFINE2(vars, tmp);
+  DEFINE2(root, vars, tmp);
   *vars = (*env)->vars;
   *tmp = acons(root, sym, val, vars);
   (*env)->vars = *tmp;
@@ -761,7 +799,7 @@ static void add_variable(void *root, Obj **env, Obj **sym, Obj **val) {
 
 // Returns a newly created environment frame.
 static Obj *push_env(void *root, Obj **env, Obj **vars, Obj **vals) {
-  DEFINE3(map, sym, val);
+  DEFINE3(root, map, sym, val);
   *map = Nil;
   if ((*vars)->type == TSYM) {
     // (fn xs body ...)
@@ -782,7 +820,7 @@ static Obj *push_env(void *root, Obj **env, Obj **vars, Obj **vals) {
 
 // Evaluates the list elements from head and returns the last return value.
 static Obj *progn(void *root, Obj **env, Obj **list) {
-  DEFINE2(lp, r);
+  DEFINE2(root, lp, r);
   *r = Nil;
   for (*lp = *list; *lp != Nil; *lp = (*lp)->cdr) {
     *r = (*lp)->car;
@@ -794,7 +832,7 @@ static Obj *progn(void *root, Obj **env, Obj **list) {
 // Evaluates all the list elements and returns their return values as a new
 // list.
 static Obj *eval_list(void *root, Obj **env, Obj **list) {
-  DEFINE4(head, lp, expr, result);
+  DEFINE4(root, head, lp, expr, result);
   *head = Nil;
   for (lp = list; *lp != Nil; *lp = (*lp)->cdr) {
     *expr = (*lp)->car;
@@ -808,7 +846,7 @@ static bool is_list(Obj *obj) { return obj == Nil || obj->type == TCELL; }
 
 static Obj *apply_func(void *root, Obj **env, Obj **fn, Obj **args) {
   (void)env;
-  DEFINE3(params, newenv, body);
+  DEFINE3(root, params, newenv, body);
   *params = (*fn)->params;
   *newenv = (*fn)->env;
   *newenv = push_env(root, newenv, params, args);
@@ -823,7 +861,7 @@ static Obj *apply(void *root, Obj **env, Obj **fn, Obj **args) {
   }
   if ((*fn)->type == TPRI) return (*fn)->priv(root, env, args);
   if ((*fn)->type == TFUN) {
-    DEFINE1(eargs);
+    DEFINE1(root, eargs);
     *eargs = eval_list(root, env, args);
     return apply_func(root, env, fn, eargs);
   }
@@ -846,7 +884,7 @@ static Obj *macroexpand(void *root, Obj **env, Obj **obj) {
   if ((*obj)->type != TCELL || ((*obj)->car->type != TSYM && (*obj)->car->type != TMAC)) {
     return *obj;
   }
-  DEFINE3(bind, macro, args);
+  DEFINE3(root, bind, macro, args);
   if ((*obj)->car->type == TMAC) {
     *macro = (*obj)->car;
   } else {
@@ -860,6 +898,8 @@ static Obj *macroexpand(void *root, Obj **env, Obj **obj) {
 
 // Evaluates the S expression.
 static Obj *eval(void *root, Obj **env, Obj **obj) {
+  print(*obj);
+  printf("\n");
   switch ((*obj)->type) {
     case TINT:
     case TSTR:
@@ -878,7 +918,7 @@ static Obj *eval(void *root, Obj **env, Obj **obj) {
     }
     case TCELL: {
       // Function application form
-      DEFINE3(fn, expanded, args);
+      DEFINE3(root, fn, expanded, args);
       *expanded = macroexpand(root, env, obj);
       if (*expanded != *obj) return eval(root, env, expanded);
       *fn = (*obj)->car;
@@ -908,7 +948,7 @@ static Obj *prim_do(void *root, Obj **env, Obj **list) {
 // (while cond expr ...)
 static Obj *prim_while(void *root, Obj **env, Obj **list) {
   if (length(*list) < 2) error("Malformed while");
-  DEFINE2(cond, exprs);
+  DEFINE2(root, cond, exprs);
   *cond = (*list)->car;
   while (eval(root, env, cond) != Nil) {
     *exprs = (*list)->cdr;
@@ -923,7 +963,11 @@ static Obj *handle_function(void *root, Obj **env, Obj **list, int type) {
       (*list)->cdr->type != TCELL)
     error("Malformed fn or macro");
 
-  Obj *p = (*list)->car;
+  DEFINE2(root, params, body);
+  *params = (*list)->car;
+  *body = (*list)->cdr;
+  Obj *p = *params;
+
   // validate (arg0 arg1) or (arg0 . argN) forms
   if (p->type != TSYM) { // but allow a single symbol to be params
     for (; p->type == TCELL; p = p->cdr)
@@ -931,9 +975,6 @@ static Obj *handle_function(void *root, Obj **env, Obj **list, int type) {
     if (p != Nil && p->type != TSYM) error("Parameter must be a symbol");
   }
 
-  DEFINE2(params, body);
-  *params = (*list)->car;
-  *body = (*list)->cdr;
   return make_function(root, env, type, params, body);
 }
 
@@ -951,7 +992,7 @@ static Obj *prim_macro(void *root, Obj **env, Obj **list) {
 static Obj *prim_def(void *root, Obj **env, Obj **list) {
   if (length(*list) != 2 || (*list)->car->type != TSYM)
     error("Malformed def");
-  DEFINE2(sym, value);
+  DEFINE2(root, sym, value);
   *sym = (*list)->car;
   *value = (*list)->cdr->car;
   *value = eval(root, env, value);
@@ -963,7 +1004,7 @@ static Obj *prim_def(void *root, Obj **env, Obj **list) {
 static Obj *prim_set(void *root, Obj **env, Obj **list) {
   if (length(*list) != 2 || (*list)->car->type != TSYM)
     error("Malformed set");
-  DEFINE2(bind, value);
+  DEFINE2(root, bind, value);
   *bind = find(env, (*list)->car);
   if (!*bind) error("Unbound variable %s", (*list)->car->symv);
   *value = (*list)->cdr->car;
@@ -974,7 +1015,7 @@ static Obj *prim_set(void *root, Obj **env, Obj **list) {
 
 // (pr-str expr)
 static Obj *prim_pr_str(void *root, Obj **env, Obj **list) {
-  DEFINE2(tmp, s);
+  DEFINE2(root, tmp, s);
   *tmp = (*list)->car;
   char *str = pr_str(eval(root, env, tmp));
   *s = make_string(root, str);
@@ -984,7 +1025,7 @@ static Obj *prim_pr_str(void *root, Obj **env, Obj **list) {
 // (if expr expr expr ...)
 static Obj *prim_if(void *root, Obj **env, Obj **list) {
   if (length(*list) < 2) error("Malformed if");
-  DEFINE3(cond, then, els);
+  DEFINE3(root, cond, then, els);
   *cond = (*list)->car;
   *cond = eval(root, env, cond);
   if (*cond != Nil) {
@@ -1017,7 +1058,7 @@ static Obj *prim_eq(void *root, Obj **env, Obj **list) {
 // (eval expr)
 static Obj *prim_eval(void *root, Obj **env, Obj **list) {
   if (length(*list) != 1) error("Malformed eval");
-  DEFINE1(arg);
+  DEFINE1(root, arg);
   *arg = (*list)->car;
   //*val = eval(root, env, arg); ??
   return eval(root, env, arg);
@@ -1026,7 +1067,7 @@ static Obj *prim_eval(void *root, Obj **env, Obj **list) {
 // (apply fn args)
 static Obj *prim_apply(void *root, Obj **env, Obj **list) {
   if (length(*list) != 2) error("apply: not given exactly 2 args");
-  DEFINE2(fn, args);
+  DEFINE2(root, fn, args);
   *fn = (*list)->car;
   *fn = eval(root, env, fn);
 
@@ -1080,7 +1121,7 @@ static Obj *prim_type(void *root, Obj **env, Obj **list) {
       error("type: unknown object type", values->car->type);
   }
 
-  DEFINE1(k);
+  DEFINE1(root, k);
   *k = intern(root, name);
   return *k;
 }
@@ -1100,7 +1141,7 @@ static Obj *prim_quote(void *root, Obj **env, Obj **list) {
 // (macro-expand expr)
 static Obj *prim_macro_expand(void *root, Obj **env, Obj **list) {
   if (length(*list) != 1) error("Malformed macro-expand");
-  DEFINE1(body);
+  DEFINE1(root, body);
   *body = (*list)->car;
   return macroexpand(root, env, body);
 }
@@ -1144,7 +1185,7 @@ static Obj *prim_cdr(void *root, Obj **env, Obj **list) {
 
 // (set-car! <cell> expr)
 static Obj *prim_set_car(void *root, Obj **env, Obj **list) {
-  DEFINE1(args);
+  DEFINE1(root, args);
   *args = eval_list(root, env, list);
   if (length(*args) != 2 || (*args)->car->type != TCELL)
     error("set_car!: invalid arguments");
@@ -1180,7 +1221,7 @@ static Obj *prim_str(void *root, Obj **env, Obj **list) {
 
 // (str-len str)
 static Obj *prim_str_len(void *root, Obj **env, Obj **list) {
-  DEFINE1(args);
+  DEFINE1(root, args);
   *args = eval_list(root, env, list);
   if (length(*args) != 1 || (*args)->car->type != TSTR) {
     error("str-len: 1st arg is not a string");
@@ -1461,14 +1502,14 @@ static Obj *prim_accept(void *root, Obj **env, Obj **list) {
 // }}}
 
 static void add_primitive(void *root, Obj **env, char *name, Primitive *fn) {
-  DEFINE2(sym, prim);
+  DEFINE2(root, sym, prim);
   *sym = intern(root, name);
   *prim = make_primitive(root, fn);
   add_variable(root, env, sym, prim);
 }
 
 static void define_constants(void *root, Obj **env) {
-  ADD_ROOT(6);
+  ADD_ROOT(root, 6);
 
   Obj **tsym = (Obj **)(root_ADD_ROOT_ + 1);
   *tsym = intern(root, "t");
@@ -1547,28 +1588,86 @@ static void define_primitives(void *root, Obj **env) {
 // {{{ main
 
 // Returns true if the environment variable is defined and not the empty string.
-static bool getEnvFlag(char *name) {
+static bool get_env_flag(char *name) {
   char *val = getenv(name);
   return val && val[0];
 }
 
-Obj *read_eval(void *root, Obj **env) {
-  Obj *val = Nil;
-  DEFINE1(expr);
+static char *get_env_value(char *name, char *def) {
+  char *val = getenv(name);
+  return val && val[0] ? val : def;
+}
+
+char *file_read_all(char *path) {
+  bool use_stdin = path[0] == '-' && path[1] == '\0';
+  FILE *fd = use_stdin ? stdin : fopen(path, "r");
+  if (fd == NULL) {
+    error("file_read_all: failed to open file: %s", path);
+  }
+
+  // Goto EOF and record file size
+  fseek(fd, 0, SEEK_END);
+  int size = ftell(fd);
+  rewind(fd);
+
+  // Read all bytes
+  char *content = (char *)malloc(sizeof(char) * size);
+  int len = fread(content, 1, size, fd); (void)len;
+  if (ferror(fd)) {
+    perror("file_read_all");
+  }
+
+  if (!use_stdin) {
+    fclose(fd);
+  }
+
+  return content;
+}
+
+Obj *eval_reader(Reader *r, Obj **env) {
+  DEFINE2(r->root, val, expr);
+  *val = Nil;
 
   for (;;) {
-    *expr = read_expr(root);
-    if (!*expr) return val;
+    *expr = reader_expr(r);
+    if (!*expr) return *val;
     if (*expr == Cparen) error("Stray close parenthesis");
     if (*expr == Dot) error("Stray dot");
-    val = eval(root, env, expr);
+    *val = eval(r->root, env, expr);
   }
+}
+
+Obj *eval_input(void *root, Obj** env, char *input) {
+  DEFINE1(root, val);
+  Reader *r = reader_new(input, root);
+  *val = eval_reader(r, env);
+  reader_destroy(r);
+
+  return *val;
+}
+
+void setup_repl_history() {
+  char *hist_folder = get_env_value("HOME", ".");
+  char *hist_file = ".shi-history";
+  int hist_folder_len = strlen(hist_folder);
+  int hist_file_len = strlen(hist_file);
+  char hist_path[hist_folder_len + hist_file_len + 2];
+  strcpy(&hist_path[0], hist_folder);
+  hist_folder[hist_folder_len] = '/';
+  strcpy(&hist_path[hist_folder_len+1], hist_file);
+  hist_folder[hist_folder_len + hist_file_len + 1] = '\0';
+  printf("%s", hist_path);
+  linenoiseHistoryLoad(hist_path);
+}
+
+void setup_repl() {
+  setup_repl_history();
 }
 
 int main(int argc, char **argv) {
   // Debug flags
-  debug_gc = getEnvFlag("MINILISP_DEBUG_GC");
-  always_gc = getEnvFlag("MINILISP_ALWAYS_GC");
+  debug_gc = get_env_flag("MINILISP_DEBUG_GC");
+  always_gc = get_env_flag("MINILISP_ALWAYS_GC");
 
   // Memory allocation
   memory = alloc_semispace();
@@ -1576,41 +1675,35 @@ int main(int argc, char **argv) {
   // Constants and primitives
   Symbols = Nil;
   void *root = NULL;
-  DEFINE2(env, expr);
+  DEFINE1(root, env);
   *env = make_env(root, &Nil, &Nil);
   define_constants(root, env);
   define_primitives(root, env);
 
-  current_file = fopen("prelude.shi", "r");
-  if (current_file == NULL) {
-    perror("shi: prelude");
-    return 1;
-  }
+  // Read and evaluate prelude
+  char *prelude_contents = file_read_all("prelude.shi");
+  eval_input(root, env, prelude_contents);
+  free(prelude_contents);
 
-  read_eval(root, env);
-
-  // eval file if given
+  // If given a file, read, eval, and exit
   if (argc >= 2) {
-    current_file = fopen(argv[1], "r");
-    if (current_file == NULL) {
-      perror("shi: load");
-      return 1;
-    }
-    read_eval(root, env);
+    char *file_contents = file_read_all(argv[1]);
+    eval_input(root, env, file_contents);
+    free(file_contents);
     return 0;
   }
 
-  // or use stdin
-  current_file = stdin;
-
-  for (;;) {
-    *expr = read_expr(root);
-    if (!*expr) return 0;
-    if (*expr == Cparen) error("Stray close parenthesis");
-    if (*expr == Dot) error("Stray dot");
-    print(eval(root, env, expr));
-    printf("\n");
+  // If stdin is a file (not terminal) read, and eval
+  if (!isatty(fileno(stdin))) {
+    char *stdin_contents = file_read_all("-");
+    eval_input(root, env, stdin_contents);
+    free(stdin_contents);
+    return 0;
   }
+
+  // Start REPL
+  setup_repl();
+  return 0;
 }
 
 // }}}
