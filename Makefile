@@ -1,5 +1,6 @@
 CC=cc
-CFLAGS=-std=c99 -g -O2 -Wall
+CV=-std=c11 -D_POSIX_C_SOURCE=201112L
+CFLAGS=-g -Os -W -Wall
 
 .PHONY: clean test
 

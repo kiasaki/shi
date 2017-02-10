@@ -84,7 +84,7 @@ typedef struct Obj {
   // Object values.
   union {
     // Int
-    int value;
+    int intv;
     // String
     char str[1];
     // Cell
@@ -117,10 +117,10 @@ typedef struct Obj {
 FILE *current_file;
 
 // Constants
-static Obj *True = &(Obj){TTRUE};
-static Obj *Nil = &(Obj){TNIL};
-static Obj *Dot = &(Obj){TDOT};
-static Obj *Cparen = &(Obj){TCPAREN};
+static Obj *True = &(Obj){TTRUE, 0, {0}};
+static Obj *Nil = &(Obj){TNIL, 0, {0}};
+static Obj *Dot = &(Obj){TDOT, 0, {0}};
+static Obj *Cparen = &(Obj){TCPAREN, 0, {0}};
 
 // The list containing all symbols. Such data structure is traditionally called
 // the "obarray", but I
@@ -132,7 +132,7 @@ static Obj *Symbols;
 //======================================================================
 
 // The size of the heap in byte
-static const int MEMORY_SIZE = 65536;
+static const unsigned int MEMORY_SIZE = 65536;
 
 // The pointer pointing to the beginning of the current heap
 static void *memory;
@@ -228,7 +228,7 @@ static Obj *alloc(void *root, int type, size_t size) {
   size = roundup(size, sizeof(void *));
 
   // Add the size of the type tag and size fields.
-  size += offsetof(Obj, value);
+  size += offsetof(Obj, intv);
 
   // Round up the object size to the nearest alignment boundary, so that the
   // next object will be
@@ -391,7 +391,7 @@ static void gc(void *root) {
 
 static Obj *make_int(void *root, int value) {
   Obj *r = alloc(root, TINT, sizeof(int));
-  r->value = value;
+  r->intv = value;
   return r;
 }
 
@@ -699,7 +699,7 @@ static char *pr_str(Obj *obj) {
     len += sprintf(&buf[len], __VA_ARGS__); \
     return buf
 
-      CASE(TINT, "%d", obj->value);
+      CASE(TINT, "%d", obj->intv);
       CASE(TSYMBOL, "%s", obj->name);
       CASE(TPRIMITIVE, "<primitive>");
       CASE(TFUNCTION, "<function>");
@@ -791,6 +791,7 @@ static Obj *eval_list(void *root, Obj **env, Obj **list) {
 static bool is_list(Obj *obj) { return obj == Nil || obj->type == TCELL; }
 
 static Obj *apply_func(void *root, Obj **env, Obj **fn, Obj **args) {
+  (void)env;
   DEFINE3(params, newenv, body);
   *params = (*fn)->params;
   *newenv = (*fn)->env;
@@ -883,6 +884,8 @@ static Obj *eval(void *root, Obj **env, Obj **obj) {
 
 // 'expr
 static Obj *prim_quote(void *root, Obj **env, Obj **list) {
+  (void)root;
+  (void)env;
   if (length(*list) != 1) error("Malformed quote");
   return (*list)->car;
 }
@@ -984,6 +987,8 @@ static Obj *prim_while(void *root, Obj **env, Obj **list) {
 
 // (gensym)
 static Obj *prim_gensym(void *root, Obj **env, Obj **list) {
+  (void)env;
+  (void)list;
   static int count = 0;
   char buf[16];
   snprintf(buf, sizeof(buf), "G__%d", count++);
@@ -995,7 +1000,7 @@ static Obj *prim_plus(void *root, Obj **env, Obj **list) {
   int sum = 0;
   for (Obj *args = eval_list(root, env, list); args != Nil; args = args->cdr) {
     if (args->car->type != TINT) error("+ takes only numbers");
-    sum += args->car->value;
+    sum += args->car->intv;
   }
   return make_int(root, sum);
 }
@@ -1005,9 +1010,9 @@ static Obj *prim_minus(void *root, Obj **env, Obj **list) {
   Obj *args = eval_list(root, env, list);
   for (Obj *p = args; p != Nil; p = p->cdr)
     if (p->car->type != TINT) error("- takes only numbers");
-  if (args->cdr == Nil) return make_int(root, -args->car->value);
-  int r = args->car->value;
-  for (Obj *p = args->cdr; p != Nil; p = p->cdr) r -= p->car->value;
+  if (args->cdr == Nil) return make_int(root, -args->car->intv);
+  int r = args->car->intv;
+  for (Obj *p = args->cdr; p != Nil; p = p->cdr) r -= p->car->intv;
   return make_int(root, r);
 }
 
@@ -1018,7 +1023,7 @@ static Obj *prim_lt(void *root, Obj **env, Obj **list) {
   Obj *x = args->car;
   Obj *y = args->cdr->car;
   if (x->type != TINT || y->type != TINT) error("< takes only numbers");
-  return x->value < y->value ? True : Nil;
+  return x->intv < y->intv ? True : Nil;
 }
 
 static Obj *handle_function(void *root, Obj **env, Obj **list, int type) {
@@ -1112,7 +1117,7 @@ static Obj *prim_num_eq(void *root, Obj **env, Obj **list) {
   Obj *x = values->car;
   Obj *y = values->cdr->car;
   if (x->type != TINT || y->type != TINT) error("= only takes numbers");
-  return x->value == y->value ? True : Nil;
+  return x->intv == y->intv ? True : Nil;
 }
 
 // (eq expr expr)
@@ -1202,7 +1207,7 @@ static Obj *prim_write(void *root, Obj **env, Obj **list) {
   if (values->car->type != TINT) error("write: 1st arg not file descriptor");
   if (values->cdr->car->type != TSTR) error("write: 2nd arg not string");
 
-  int fd = values->car->value;
+  int fd = values->car->intv;
   char *str = values->cdr->car->str;
 
   if (write(fd, str, strlen(str)) < 0)
@@ -1219,8 +1224,8 @@ static Obj *prim_read(void *root, Obj **env, Obj **list) {
   if (values->car->type != TINT) error("read: 1st arg not file descriptor");
   if (values->cdr->car->type != TINT) error("read: 2nd arg not int");
 
-  int fd = values->car->value;
-  int len = values->cdr->car->value;
+  int fd = values->car->intv;
+  int len = values->cdr->car->intv;
 
   char str[len+1];
   bzero(str, len+1);
@@ -1231,7 +1236,8 @@ static Obj *prim_read(void *root, Obj **env, Obj **list) {
 }
 
 // (seconds)
-static Obj *prim_seconds(void *root, Obj **env, Obj **list) {
+static Obj *prim_seconds(void *root, Obj ** env, Obj **list) {
+  (void)env;
   if (length(*list) != 0) error("seconds: takes no args");
   struct timespec spec;
   clock_gettime(CLOCK_REALTIME, &spec);
@@ -1244,7 +1250,7 @@ static Obj *prim_sleep(void *root, Obj **env, Obj **list) {
   Obj *values = eval_list(root, env, list);
   if (values->car->type != TINT) error("sleep: 1st arg not int");
 
-  int milliseconds = values->car->value;
+  int milliseconds = values->car->intv;
   struct timespec ts;
   ts.tv_sec = milliseconds / 1000;
   ts.tv_nsec = (milliseconds % 1000) * 1000000;
@@ -1258,7 +1264,7 @@ static Obj *prim_exit(void *root, Obj **env, Obj **list) {
   Obj *values = eval_list(root, env, list);
   if (values->car->type != TINT) error("exit: 1st arg not int");
 
-  exit(values->car->value);
+  exit(values->car->intv);
   return Nil;
 }
 
@@ -1291,7 +1297,7 @@ static Obj *prim_close(void *root, Obj **env, Obj **list) {
   Obj *values = eval_list(root, env, list);
   if (values->car->type != TINT) error("open: 1st arg not int");
 
-  if (close(values->car->value) < 0) {
+  if (close(values->car->intv) < 0) {
     error("close: error closing file");
   }
   return Nil;
@@ -1305,9 +1311,9 @@ static Obj *prim_socket(void *root, Obj **env, Obj **list) {
   if (values->cdr->car->type != TINT) error("socket: 2nd arg not int");
   if (values->cdr->cdr->car->type != TINT) error("socket: 3rd arg not int");
 
-  int domain = values->car->value;
-  int type = values->cdr->car->value;
-  int protocol = values->cdr->cdr->car->value;
+  int domain = values->car->intv;
+  int type = values->cdr->car->intv;
+  int protocol = values->cdr->cdr->car->intv;
 
   int fd;
   if ((fd = socket(domain, type, protocol)) < 0) {
@@ -1325,9 +1331,9 @@ static Obj *prim_bind_inet(void *root, Obj **env, Obj **list) {
   if (values->cdr->car->type != TSTR) error("bind-inet: 2nd arg not string");
   if (values->cdr->cdr->car->type != TINT) error("bind-inet: 3rd arg not int");
 
-  int socket_fd = values->car->value;
+  int socket_fd = values->car->intv;
   char *host = values->cdr->car->str;
-  int port = values->cdr->cdr->car->value;
+  int port = values->cdr->cdr->car->intv;
 
   struct sockaddr_in serv_addr;
   serv_addr.sin_family = AF_INET;
@@ -1349,8 +1355,8 @@ static Obj *prim_listen(void *root, Obj **env, Obj **list) {
   if (values->car->type != TINT) error("listen: 1st arg not int");
   if (values->cdr->car->type != TINT) error("listen: 2nd arg not int");
 
-  int socket_fd = values->car->value;
-  int backlog_size = values->cdr->car->value;
+  int socket_fd = values->car->intv;
+  int backlog_size = values->cdr->car->intv;
 
   if (listen(socket_fd, backlog_size) < 0) {
     switch (errno) {
@@ -1379,7 +1385,7 @@ static Obj *prim_accept(void *root, Obj **env, Obj **list) {
   if (values->car->type != TINT) error("accept: 1st arg not int");
 
   int client_fd;
-  int socket_fd = values->car->value;
+  int socket_fd = values->car->intv;
   struct sockaddr_in c_addr;
   socklen_t c_addr_len = sizeof(c_addr);
 
