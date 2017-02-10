@@ -11,7 +11,7 @@
 ; if - Primitive
 ; do - Primitive
 
-(def list (fn (x . y) (cons x y)))
+(def list (fn xs xs))
 
 (def defn (macro (name args . exprs)
   (list 'def name (cons 'fn (cons args exprs)))))
@@ -55,6 +55,7 @@
 ; eq - Primitive
 
 (def cond if)
+(def else t)
 
 (defn not (x)
   (if x nil t))
@@ -162,9 +163,9 @@
   (def list-name (gensym))
   (list 'do
     (list 'def list-name list-val)
-    (list 'def var-name (list 'car list-val))
+    (list 'def var-name (list 'car list-name))
     (cons 'while
-      (cons (list 'list? list-name)
+      (cons (list 'and (list 'list? list-name) (list 'not (list 'empty? list-name)))
         (cons (list 'set var-name (list 'car list-name))
           (cons (list 'set list-name (list 'cdr list-name))
             body))))
@@ -181,6 +182,7 @@
   (dolist (x coll (reverse ret))
     (set ret (cons (f x) ret))))
 
+; (reduce fn coll) -or- (reduce fn init coll)
 (defn reduce (f . args)
   (if (cdr args)
     (do
@@ -208,6 +210,49 @@
   (if (empty? xs) t
       (empty? (rest xs)) (first xs)
       (list 'if (first xs) (cons 'and (rest xs)) nil)))
+
+; A-List
+; ==========================
+
+(defn alist? (al)
+  (def all-cons? t)
+  (dolist (item al all-cons?)
+    (if (not (cons? item))
+      (set all-cons? nil))))
+
+(defn alist-has? (al k)
+  (def found? nil)
+  (dolist (item al found?)
+    (when (eq (first item) k)
+      (set found? t))))
+
+(defn alist-get (al k)
+  (def res nil)
+  (dolist (item al res)
+    (when (eq (first item) k)
+      (set res (second item)))))
+
+(defn alist-set (al k v)
+  (reduce
+    (fn (coll item)
+      (cond
+        (eq (first item) k) (cons (cons k v) coll)
+        else (cons item coll)))
+    (list) al))
+
+(defn alist-del (al k)
+  (reduce
+    (fn (coll item)
+      (cond
+        (eq (first item) k) coll
+        (cons item coll)))
+    (list) al))
+
+(defn alist-keys (al)
+  (map (fn (kv) (first kv)) al))
+
+(defn alist-vals (al)
+  (map (fn (kv) (second kv)) al))
 
 ; Collections
 ; ==========================
@@ -292,18 +337,15 @@
 ; ==========================
 
 ; pr-str - Primitive
+; open - Primitive
+; close - Primitive
 ; write - Primitive
-
+; read - Primitive
+; sleep - Primitive
+; exit - Primitive
 ; TODO getenv - Primitive
-; TODO open - Primitive
-; TODO close - Primitive
-; TODO writeb - Primitive
-; TODO readb - Primitive
-; TODO std{in,out,err} - Primitive
-; TODO exit - Primitive
 ; TODO error - Primitive
 ; TODO trap-error - Primitive
-; TODO sleep - Primitive
 
 (def *stdin* 0)
 (def *stdout* 1)
@@ -327,3 +369,13 @@
 (def println (fn (x)
   (print x)
   (newline)))
+
+(defn read-all (path)
+  (def fd (open path))
+  (def contents "")
+  (def last-read (read fd 255))
+  (while (> (str-len last-read) 0)
+    (set contents (str contents last-read))
+    (set last-read (read fd 255)))
+  (close fd)
+  contents)

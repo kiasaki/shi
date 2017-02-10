@@ -53,6 +53,7 @@ syntax keyword shiFunc unquote unquote-splicing quasiquote
 syntax keyword shiFunc pr-str write getenv open close readb writeb exit rand millis seconds
 syntax keyword shiFunc newline pr prn print println
 syntax keyword shiFunc sleep open close read bind-inet socket listen accept
+syntax keyword shiFunc str str-len read-all
 
 syntax match shiKeyword ":\<\k\+\>"
 
