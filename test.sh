@@ -57,7 +57,7 @@ run cons "(a b c)" "(cons 'a (cons 'b (cons 'c ())))"
 run car a "(car '(a b c))"
 run cdr "(b c)" "(cdr '(a b c))"
 
-run setcar "(x . b)" "(def obj (cons 'a 'b)) (setcar obj 'x) obj"
+run set-car! "(x . b)" "(def obj (cons 'a 'b)) (set-car! obj 'x) obj"
 
 # Comments
 run comment 5 "
@@ -86,17 +86,17 @@ run if9 '()' "(if () 'a () 'b () 'c)"
 run = t '(= 3 3)'
 run = '()' '(= 3 2)'
 
-# eq
-run eq t "(eq 'foo 'foo)"
-run eq t "(eq + +)"
-run eq '()' "(eq 'foo 'bar)"
-run eq '()' "(eq + 'bar)"
+# eq?
+run eq? t "(eq? 'foo 'foo)"
+run eq? t "(eq? + +)"
+run eq? '()' "(eq? 'foo 'bar)"
+run eq? '()' "(eq? + 'bar)"
 
 # gensym
 run gensym G__0 '(gensym)'
-run gensym '()' "(eq (gensym) 'G__0)"
-run gensym '()' '(eq (gensym) (gensym))'
-run gensym t '((fn (x) (eq x x)) (gensym))'
+run gensym '()' "(eq? (gensym) 'G__0)"
+run gensym '()' '(eq? (gensym) (gensym))'
+run gensym t '((fn (x) (eq? x x)) (gensym))'
 
 # functions
 run fn '<function>' '(fn (x) x)'

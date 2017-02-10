@@ -40,11 +40,10 @@ enum {
   TINT = 1,
   TSTR,
   TCELL,
-  TSYMBOL,
-  TREF,
-  TPRIMITIVE,
-  TFUNCTION,
-  TMACRO,
+  TSYM,
+  TPRI,
+  TFUN,
+  TMAC,
   TENV,
   // The marker that indicates the object has been moved to other location by
   // GC. The new location
@@ -348,20 +347,17 @@ static void gc(void *root) {
     switch (scan1->type) {
       case TINT:
       case TSTR:
-      case TSYMBOL:
-      case TPRIMITIVE:
+      case TSYM:
+      case TPRI:
         // Any of the above types does not contain a pointer to a GC-managed
         // object.
-        break;
-      case TREF:
-        scan1->refv = forward(scan1->refv);
         break;
       case TCELL:
         scan1->car = forward(scan1->car);
         scan1->cdr = forward(scan1->cdr);
         break;
-      case TFUNCTION:
-      case TMACRO:
+      case TFUN:
+      case TMAC:
         scan1->params = forward(scan1->params);
         scan1->body = forward(scan1->body);
         scan1->env = forward(scan1->env);
@@ -411,19 +407,19 @@ static Obj *cons(void *root, Obj **car, Obj **cdr) {
 }
 
 static Obj *make_symbol(void *root, char *name) {
-  Obj *sym = alloc(root, TSYMBOL, strlen(name) + 1);
+  Obj *sym = alloc(root, TSYM, strlen(name) + 1);
   strcpy(sym->symv, name);
   return sym;
 }
 
 static Obj *make_primitive(void *root, Primitive *fn) {
-  Obj *r = alloc(root, TPRIMITIVE, sizeof(Primitive *));
+  Obj *r = alloc(root, TPRI, sizeof(Primitive *));
   r->priv = fn;
   return r;
 }
 
 static Obj *make_function(void *root, Obj **env, int type, Obj **params, Obj **body) {
-  assert(type == TFUNCTION || type == TMACRO);
+  assert(type == TFUN || type == TMAC);
   Obj *r = alloc(root, type, sizeof(Obj *) * 3);
   r->params = *params;
   r->body = *body;
@@ -506,8 +502,7 @@ static Obj *read_list(void *root) {
 }
 
 // May create a new symbol. If there's a symbol with the same name, it will not
-// create a new symbol
-// but return the existing one.
+// create a new symbol but return the existing one.
 static Obj *intern(void *root, char *name) {
   for (Obj *p = Symbols; p != Nil; p = p->cdr)
     if (strcmp(name, p->car->symv) == 0) return p->car;
@@ -517,8 +512,7 @@ static Obj *intern(void *root, char *name) {
   return *sym;
 }
 
-// Reader marcro ' (single quote). It reads an expression and returns (quote
-// <expr>).
+// 'def -> (quote def)
 static Obj *read_quote(void *root) {
   DEFINE2(sym, tmp);
   *sym = intern(root, "quote");
@@ -528,9 +522,20 @@ static Obj *read_quote(void *root) {
   return *tmp;
 }
 
+// `(list a) -> (quasiquote (list a))
 static Obj *read_quasiquote(void *root) {
   DEFINE2(sym, tmp);
   *sym = intern(root, "quasiquote");
+  *tmp = read_expr(root);
+  *tmp = cons(root, tmp, &Nil);
+  *tmp = cons(root, sym, tmp);
+  return *tmp;
+}
+
+// @b -> (unbox b)
+static Obj *read_unbox(void *root) {
+  DEFINE2(sym, tmp);
+  *sym = intern(root, "unbox");
   *tmp = read_expr(root);
   *tmp = cons(root, tmp, &Nil);
   *tmp = cons(root, sym, tmp);
@@ -624,6 +629,7 @@ static Obj *read_expr(void *root) {
     if (c == '\'') return read_quote(root);
     if (c == '`') return read_quasiquote(root);
     if (c == ',') return read_unquote(root);
+    if (c == '@') return read_unbox(root);
     if (c == '"') return read_string(root);
     if (isdigit(c)) return make_int(root, read_number(c - '0'));
     if (c == '-' && isdigit(peek())) return make_int(root, -read_number(0));
@@ -710,11 +716,10 @@ static char *pr_str(Obj *obj) {
     return buf
 
       CASE(TINT, "%d", obj->intv);
-      CASE(TSYMBOL, "%s", obj->symv);
-      CASE(TREF, "<ref>");
-      CASE(TPRIMITIVE, "<primitive>");
-      CASE(TFUNCTION, "<function>");
-      CASE(TMACRO, "<macro>");
+      CASE(TSYM, "%s", obj->symv);
+      CASE(TPRI, "<primitive>");
+      CASE(TFUN, "<function>");
+      CASE(TMAC, "<macro>");
       CASE(TMOVED, "<moved>");
       CASE(TTRUE, "t");
       CASE(TNIL, "()");
@@ -758,7 +763,7 @@ static void add_variable(void *root, Obj **env, Obj **sym, Obj **val) {
 static Obj *push_env(void *root, Obj **env, Obj **vars, Obj **vals) {
   DEFINE3(map, sym, val);
   *map = Nil;
-  if ((*vars)->type == TSYMBOL) {
+  if ((*vars)->type == TSYM) {
     // (fn xs body ...)
     *map = acons(root, vars, vals, map);
   } else {
@@ -816,8 +821,8 @@ static Obj *apply(void *root, Obj **env, Obj **fn, Obj **args) {
   if (!is_list(*args)) {
     error("argument must be a list");
   }
-  if ((*fn)->type == TPRIMITIVE) return (*fn)->priv(root, env, args);
-  if ((*fn)->type == TFUNCTION) {
+  if ((*fn)->type == TPRI) return (*fn)->priv(root, env, args);
+  if ((*fn)->type == TFUN) {
     DEFINE1(eargs);
     *eargs = eval_list(root, env, args);
     return apply_func(root, env, fn, eargs);
@@ -838,15 +843,15 @@ static Obj *find(Obj **env, Obj *sym) {
 
 // Expands the given macro application form.
 static Obj *macroexpand(void *root, Obj **env, Obj **obj) {
-  if ((*obj)->type != TCELL || ((*obj)->car->type != TSYMBOL && (*obj)->car->type != TMACRO)) {
+  if ((*obj)->type != TCELL || ((*obj)->car->type != TSYM && (*obj)->car->type != TMAC)) {
     return *obj;
   }
   DEFINE3(bind, macro, args);
-  if ((*obj)->car->type == TMACRO) {
+  if ((*obj)->car->type == TMAC) {
     *macro = (*obj)->car;
   } else {
     *bind = find(env, (*obj)->car);
-    if (!*bind || (*bind)->cdr->type != TMACRO) return *obj;
+    if (!*bind || (*bind)->cdr->type != TMAC) return *obj;
     *macro = (*bind)->cdr;
   }
   *args = (*obj)->cdr;
@@ -858,15 +863,14 @@ static Obj *eval(void *root, Obj **env, Obj **obj) {
   switch ((*obj)->type) {
     case TINT:
     case TSTR:
-    case TREF:
-    case TPRIMITIVE:
-    case TFUNCTION:
-    case TMACRO:
+    case TPRI:
+    case TFUN:
+    case TMAC:
     case TTRUE:
     case TNIL:
       // Self-evaluating objects
       return *obj;
-    case TSYMBOL: {
+    case TSYM: {
       // Variable
       Obj *bind = find(env, *obj);
       if (!bind) error("Undefined symbol: %s", (*obj)->symv);
@@ -880,7 +884,7 @@ static Obj *eval(void *root, Obj **env, Obj **obj) {
       *fn = (*obj)->car;
       *fn = eval(root, env, fn);
       *args = (*obj)->cdr;
-      if ((*fn)->type != TPRIMITIVE && (*fn)->type != TFUNCTION) {
+      if ((*fn)->type != TPRI && (*fn)->type != TFUN) {
         error("The head of a list must be a function");
       }
       return apply(root, env, fn, args);
@@ -915,16 +919,16 @@ static Obj *prim_while(void *root, Obj **env, Obj **list) {
 
 static Obj *handle_function(void *root, Obj **env, Obj **list, int type) {
   if ((*list)->type != TCELL ||
-      !(is_list((*list)->car) || (*list)->car->type == TSYMBOL) ||
+      !(is_list((*list)->car) || (*list)->car->type == TSYM) ||
       (*list)->cdr->type != TCELL)
     error("Malformed fn or macro");
 
   Obj *p = (*list)->car;
   // validate (arg0 arg1) or (arg0 . argN) forms
-  if (p->type != TSYMBOL) { // but allow a single symbol to be params
+  if (p->type != TSYM) { // but allow a single symbol to be params
     for (; p->type == TCELL; p = p->cdr)
-      if (p->car->type != TSYMBOL) error("Parameter must be a symbol");
-    if (p != Nil && p->type != TSYMBOL) error("Parameter must be a symbol");
+      if (p->car->type != TSYM) error("Parameter must be a symbol");
+    if (p != Nil && p->type != TSYM) error("Parameter must be a symbol");
   }
 
   DEFINE2(params, body);
@@ -935,17 +939,17 @@ static Obj *handle_function(void *root, Obj **env, Obj **list, int type) {
 
 // (fn (<symbol> ...) expr ...)
 static Obj *prim_fn(void *root, Obj **env, Obj **list) {
-  return handle_function(root, env, list, TFUNCTION);
+  return handle_function(root, env, list, TFUN);
 }
 
 // (macro (<symbol> ...) expr ...)
 static Obj *prim_macro(void *root, Obj **env, Obj **list) {
-  return handle_function(root, env, list, TMACRO);
+  return handle_function(root, env, list, TMAC);
 }
 
 // (def <symbol> expr)
 static Obj *prim_def(void *root, Obj **env, Obj **list) {
-  if (length(*list) != 2 || (*list)->car->type != TSYMBOL)
+  if (length(*list) != 2 || (*list)->car->type != TSYM)
     error("Malformed def");
   DEFINE2(sym, value);
   *sym = (*list)->car;
@@ -957,7 +961,7 @@ static Obj *prim_def(void *root, Obj **env, Obj **list) {
 
 // (set <symbol> expr)
 static Obj *prim_set(void *root, Obj **env, Obj **list) {
-  if (length(*list) != 2 || (*list)->car->type != TSYMBOL)
+  if (length(*list) != 2 || (*list)->car->type != TSYM)
     error("Malformed set");
   DEFINE2(bind, value);
   *bind = find(env, (*list)->car);
@@ -1003,9 +1007,9 @@ static Obj *prim_if(void *root, Obj **env, Obj **list) {
 }
 
 
-// (eq expr expr)
+// (eq? expr expr)
 static Obj *prim_eq(void *root, Obj **env, Obj **list) {
-  if (length(*list) != 2) error("Malformed eq");
+  if (length(*list) != 2) error("eq?: needs exactly 2 arguments");
   Obj *values = eval_list(root, env, list);
   return values->car == values->cdr->car ? True : Nil;
 }
@@ -1053,9 +1057,6 @@ static Obj *prim_type(void *root, Obj **env, Obj **list) {
     case TSTR:
       name = "str";
       break;
-    case TREF:
-      name = "ref";
-      break;
     case TCELL:
       if (values->car->cdr != Nil && values->car->cdr->type != TCELL) {
         name = "cons";
@@ -1063,16 +1064,16 @@ static Obj *prim_type(void *root, Obj **env, Obj **list) {
         name = "list";
       }
       break;
-    case TSYMBOL:
+    case TSYM:
       name = "sym";
       break;
-    case TPRIMITIVE:
+    case TPRI:
       name = "prim";
       break;
-    case TFUNCTION:
+    case TFUN:
       name = "fn";
       break;
-    case TMACRO:
+    case TMAC:
       name = "macro";
       break;
     default:
@@ -1141,12 +1142,12 @@ static Obj *prim_cdr(void *root, Obj **env, Obj **list) {
 }
 
 
-// (setcar <cell> expr)
-static Obj *prim_setcar(void *root, Obj **env, Obj **list) {
+// (set-car! <cell> expr)
+static Obj *prim_set_car(void *root, Obj **env, Obj **list) {
   DEFINE1(args);
   *args = eval_list(root, env, list);
   if (length(*args) != 2 || (*args)->car->type != TCELL)
-    error("Malformed setcar");
+    error("set_car!: invalid arguments");
   (*args)->car->car = (*args)->cdr->car;
   return (*args)->car;
 }
@@ -1317,7 +1318,7 @@ static Obj *prim_open(void *root, Obj **env, Obj **list) {
 
   // Check 2nd param (can be either 'append or 'truncate)
   Obj *rest = values->cdr;
-  if (rest != Nil && rest->car->type == TSYMBOL && strncmp(rest->car->symv, "truncate", 8) == 0) {
+  if (rest != Nil && rest->car->type == TSYM && strncmp(rest->car->symv, "truncate", 8) == 0) {
     flags = flags | O_TRUNC;
   } else {
     flags = flags | O_APPEND;
@@ -1491,17 +1492,11 @@ static void define_constants(void *root, Obj **env) {
 }
 
 static void define_primitives(void *root, Obj **env) {
-  // Macro
-  add_primitive(root, env, "quote", prim_quote);
-  add_primitive(root, env, "gensym", prim_gensym);
-  add_primitive(root, env, "macro", prim_macro);
-  add_primitive(root, env, "macro-expand", prim_macro_expand);
-
   // Lists
   add_primitive(root, env, "cons", prim_cons);
   add_primitive(root, env, "car", prim_car);
   add_primitive(root, env, "cdr", prim_cdr);
-  add_primitive(root, env, "setcar", prim_setcar);
+  add_primitive(root, env, "set-car!", prim_set_car);
 
   // Strings
   add_primitive(root, env, "str", prim_str);
@@ -1514,30 +1509,34 @@ static void define_primitives(void *root, Obj **env) {
   add_primitive(root, env, "if", prim_if);
   add_primitive(root, env, "do", prim_do);
   add_primitive(root, env, "while", prim_while);
+  add_primitive(root, env, "eq?", prim_eq);
+  add_primitive(root, env, "eval", prim_eval);
+  add_primitive(root, env, "apply", prim_apply);
+  add_primitive(root, env, "type", prim_type);
+
+  // Macro
+  add_primitive(root, env, "quote", prim_quote);
+  add_primitive(root, env, "gensym", prim_gensym);
+  add_primitive(root, env, "macro", prim_macro);
+  add_primitive(root, env, "macro-expand", prim_macro_expand);
 
   // Math
   add_primitive(root, env, "+", prim_plus);
   add_primitive(root, env, "-", prim_minus);
   add_primitive(root, env, "<", prim_lt);
   add_primitive(root, env, "=", prim_num_eq);
-  add_primitive(root, env, "eq", prim_eq);
 
-  // Language (suite)
-  add_primitive(root, env, "eval", prim_eval);
-  add_primitive(root, env, "apply", prim_apply);
-  add_primitive(root, env, "type", prim_type);
-
-  // IO
+  // OS
   add_primitive(root, env, "pr-str", prim_pr_str);
   add_primitive(root, env, "write", prim_write);
   add_primitive(root, env, "read", prim_read);
-
-  // OS
   add_primitive(root, env, "seconds", prim_seconds);
   add_primitive(root, env, "sleep", prim_sleep);
   add_primitive(root, env, "exit", prim_exit);
   add_primitive(root, env, "open", prim_open);
   add_primitive(root, env, "close", prim_close);
+
+  // Net
   add_primitive(root, env, "socket", prim_socket);
   add_primitive(root, env, "bind-inet", prim_bind_inet);
   add_primitive(root, env, "listen", prim_listen);

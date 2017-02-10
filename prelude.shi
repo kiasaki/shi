@@ -27,32 +27,32 @@
 ; type - Primitive
 
 (defn true? (x)
-  (eq (type x) 'true))
+  (eq? (type x) 'true))
 (defn nil? (x)
-  (eq (type x) 'nil))
+  (eq? (type x) 'nil))
 (defn int? (x)
-  (eq (type x) 'int))
+  (eq? (type x) 'int))
 (defn str? (x)
-  (eq (type x) 'str))
+  (eq? (type x) 'str))
 (defn cons? (x)
-  (eq (type x) 'cons))
+  (eq? (type x) 'cons))
 (defn list? (x)
-  (eq (type x) 'list))
+  (eq? (type x) 'list))
 (defn sym? (x)
-  (eq (type x) 'sym))
+  (eq? (type x) 'sym))
 (defn prim? (x)
-  (eq (type x) 'prim))
+  (eq? (type x) 'prim))
 (defn fn? (x)
-  (eq (type x) 'fn))
+  (eq? (type x) 'fn))
 (defn macro? (x)
-  (eq (type x) 'macro))
+  (eq? (type x) 'macro))
 (defn atom? (x)
   (if (true? x) t (nil? x) t (int? x) t (str? x) t (sym? x) t nil))
 
 ; Conditionals
 ; ==========================
 
-; eq - Primitive
+; eq? - Primitive
 
 (def cond if)
 (def else t)
@@ -145,7 +145,7 @@
 (defn /= (x y) (not (= x y)))
 
 (defn pair? (x)
-  (eq (mod x 2) 0))
+  (eq? (mod x 2) 0))
 
 (defn odd? (x)
   (not (pair? x)))
@@ -211,6 +211,20 @@
       (empty? (rest xs)) (first xs)
       (list 'if (first xs) (cons 'and (rest xs)) nil)))
 
+; Boxes
+; ==========================
+
+(defn box (x)
+  (list x))
+
+(defn unbox (box)
+  (car box))
+
+(defn swap! (box f)
+  (setcar box (f (unbox box))))
+
+
+
 ; A-List
 ; ==========================
 
@@ -223,20 +237,20 @@
 (defn alist-has? (al k)
   (def found? nil)
   (dolist (item al found?)
-    (when (eq (first item) k)
+    (when (eq? (first item) k)
       (set found? t))))
 
 (defn alist-get (al k)
   (def res nil)
   (dolist (item al res)
-    (when (eq (first item) k)
+    (when (eq? (first item) k)
       (set res (second item)))))
 
 (defn alist-set (al k v)
   (reduce
     (fn (coll item)
       (cond
-        (eq (first item) k) (cons (cons k v) coll)
+        (eq? (first item) k) (cons (cons k v) coll)
         else (cons item coll)))
     (list) al))
 
@@ -244,7 +258,7 @@
   (reduce
     (fn (coll item)
       (cond
-        (eq (first item) k) coll
+        (eq? (first item) k) coll
         (cons item coll)))
     (list) al))
 
@@ -262,7 +276,7 @@
   (dolist (c colls)
     (dolist (x c)
       (set ret (cons x ret))))
-  ret)
+  (reverse ret))
 
 (defn conj (coll item)
   (cond (list? coll)
@@ -284,11 +298,11 @@
       exp
     (list? exp)
       (cond
-        (eq 'unquote (first exp))
+        (eq? 'unquote (first exp))
           (list 'list (second exp))
-        (eq 'unquote-splicing (first exp))
+        (eq? 'unquote-splicing (first exp))
           (second exp)
-        (eq 'quasiquote (first exp))
+        (eq? 'quasiquote (first exp))
           (qq-expand-list (qq-expand (second exp)))
         (list 'list (list 'extend (qq-expand-list (first exp)) (qq-expand (rest exp)))))
     (list 'list exp)))
@@ -301,11 +315,11 @@
     ;  (list 'apply 'vec (qq-expand (vec->list exp) nesting))
     (list? exp)
       (cond
-        (eq 'unquote (first exp))
+        (eq? 'unquote (first exp))
           (second exp)
-        (eq 'unquote-splicing (first exp))
+        (eq? 'unquote-splicing (first exp))
           (error "illegal unquote-splicing at quasiquote root")
-        (eq 'quasiquote (first exp))
+        (eq? 'quasiquote (first exp))
           (qq-expand (qq-expand (second exp)))
         (list 'extend (qq-expand-list (first exp)) (qq-expand (rest exp))))
     exp))
