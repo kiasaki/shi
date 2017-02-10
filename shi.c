@@ -129,7 +129,7 @@ static Obj *Symbols;
 // {{{ memory
 
 // The size of the heap in byte
-static const unsigned int MEMORY_SIZE = 65536;
+static const unsigned int MEMORY_SIZE = 131072;
 
 // The pointer pointing to the beginning of the current heap
 static void *memory;
@@ -949,8 +949,9 @@ static Obj *eval(void *root, Obj **env, Obj **obj) {
   case TSYM: {
     // Variable
     Obj *bind = find(env, *obj);
-    if (!bind)
-      error("Undefined symbol: %s", (*obj)->symv);
+    if (!bind) {
+      error("eval: undefined symbol: %s", (*obj)->symv);
+    }
     return bind->cdr;
   }
   case TCELL: {
@@ -1428,22 +1429,19 @@ static Obj *prim_open(void *root, Obj **env, Obj **list) {
   if (values->car->type != TSTR)
     error("open: 1st arg not string");
 
-  int flags = O_RDWR | O_CREAT;
 
-  // Check 2nd param (can be either 'append or 'truncate)
+  // Check 2nd param (passed a mode to fopen(3))
+  char *mode = "r";
   Obj *rest = values->cdr;
-  if (rest != Nil && rest->car->type == TSYM &&
-      strncmp(rest->car->symv, "truncate", 8) == 0) {
-    flags = flags | O_TRUNC;
-  } else {
-    flags = flags | O_APPEND;
+  if (rest != Nil && rest->car->type == TSTR) {
+    mode = rest->car->strv;
   }
 
-  int fd;
-  if ((fd = open(values->car->strv, flags)) < 0) {
+  FILE *fd;
+  if ((fd = fopen(values->car->strv, mode)) == NULL) {
     error("open: error opening file");
   }
-  return make_int(root, fd);
+  return make_int(root, fileno(fd));
 }
 
 // (close fd)
@@ -1701,9 +1699,10 @@ char *file_read_all(char *path) {
   rewind(fd);
 
   // Read all bytes
-  char *content = (char *)malloc(sizeof(char) * size);
+  char *content = (char *)malloc(sizeof(char) * (size + 1));
   int len = fread(content, 1, size, fd);
-  (void)len;
+  content[len] = '\0';
+
   if (ferror(fd)) {
     perror("file_read_all");
   }

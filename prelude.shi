@@ -194,6 +194,7 @@
   (dolist (x coll ret)
     (set ret (f ret x))))
 
+
 ; Conditionals (suite)
 ; ==========================
 
@@ -211,6 +212,7 @@
       (empty? (rest xs)) (first xs)
       (list 'if (first xs) (cons 'and (rest xs)) nil)))
 
+
 ; Boxes
 ; ==========================
 
@@ -222,7 +224,6 @@
 
 (defn swap! (box f)
   (setcar box (f (unbox box))))
-
 
 
 ; A-List
