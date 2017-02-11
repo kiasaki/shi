@@ -8,7 +8,7 @@
 (http:add srv 'GET "/" (fn (req res)
   (-> res
     (alist-set-in '(headers Content-Type) "text/html")
-    (alist-set 'body "<h1>Hello</h1><p>World!</p>"))))
+    (alist-set 'body (str "<h1>Hello</h1><p>World!</p>" (num->str (rand 100)))))))
 
 (println (str "server starting on port: " (pr-str port)))
 (http:listen srv)

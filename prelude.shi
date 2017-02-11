@@ -162,6 +162,9 @@
         (< x 0) (- x)
         x))
 
+(defn num->str (x)
+  (pr-str x))
+
 ; Iteration
 ; ==========================
 
@@ -564,31 +567,32 @@
   (while (alist-get @srv 'running)
     ; Read
     (set client-fd (accept (alist-get @srv 'listen-sock)))
-    (def req (list))
-    (def res
-      (list
-        (cons 'code 200)
-        (cons 'body "")
-        (cons 'headers (list (cons 'Content-Type "text/plain")))))
-    (def handler-fn (alist-get (car (alist-get @srv 'handlers)) 'handler-fn))
+    (when client-fd
+      (def req (list))
+      (def res
+        (list
+          (cons 'code 200)
+          (cons 'body "")
+          (cons 'headers (list (cons 'Content-Type "text/plain")))))
+      (def handler-fn (alist-get (car (alist-get @srv 'handlers)) 'handler-fn))
 
-    ; Handle
-    (set res (handler-fn req res))
+      ; Handle
+      (set res (handler-fn req res))
 
-    ; Write
-    (write client-fd "HTTP/1.1 ")
-    (write client-fd (pr-str (alist-get res 'code)))
-    (write client-fd (str " " (alist-get *http-codes* (alist-get res 'code)) "\n"))
-    ; Write: headers
-    (dolist (h (alist-get res 'headers))
-      (write client-fd (str (pr-str (car h)) ": " (cdr h) "\n")))
-    (write client-fd (str "Connection: close\n"))
-    ; Write: body
-    (def body-len (str-len (alist-get res 'body)))
-    (when (> body-len 0)
-      (write client-fd (str "Content-Length: " (pr-str body-len) "\n\n"))
-      (write client-fd (alist-get res 'body)))
+      ; Write
+      (write client-fd "HTTP/1.1 ")
+      (write client-fd (pr-str (alist-get res 'code)))
+      (write client-fd (str " " (alist-get *http-codes* (alist-get res 'code)) "\n"))
+      ; Write: headers
+      (dolist (h (alist-get res 'headers))
+        (write client-fd (str (pr-str (car h)) ": " (cdr h) "\n")))
+      (write client-fd (str "Connection: close\n"))
+      ; Write: body
+      (def body-len (str-len (alist-get res 'body)))
+      (when (> body-len 0)
+        (write client-fd (str "Content-Length: " (pr-str body-len) "\n\n"))
+        (write client-fd (alist-get res 'body)))
 
-    (sleep 500)
-    (close client-fd))
+      (sleep 500)
+      (close client-fd)))
   (close (alist-get @srv 'listen-sock)))

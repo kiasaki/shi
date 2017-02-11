@@ -14,6 +14,7 @@
 
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 
@@ -1835,6 +1836,10 @@ void setup_repl(void *root, Obj **env) {
 int main(int argc, char **argv) {
   // Seed rand
   pcg32_srandom(time(NULL) ^ (intptr_t)&printf, (intptr_t)&gc);
+
+  // TODO implement signal primitive
+  signal(SIGPIPE, SIG_IGN);
+  signal(SIGCHLD, SIG_IGN);
 
   // Debug flags
   debug_gc = get_env_flag("MINILISP_DEBUG_GC");
