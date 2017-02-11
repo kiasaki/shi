@@ -5,12 +5,8 @@
 - prim: str-part
 - prim: rand
 - prim: read-sexp
-- refactor reader to use string not fd
-- alist fns
-- debug apply/extend/let
-- http server framework
 - http static files
-- http headers
+- http router
 - http responses
 - json
 - regexp

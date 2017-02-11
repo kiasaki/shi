@@ -236,8 +236,8 @@ run and5 't' "(and t)"
 run and6 '5' "(and t 1 5)"
 
 # collections
-#run extend '(1 2 3)' "(extend '(1) '(2 3))"
-#run extend '(1 2 3 4 5)' "(extend '(1) '() '(2 3 4) '(5))"
+run extend '(1 2 3)' "(extend '(1) '(2 3))"
+run extend '(1 2 3 4 5)' "(extend '(1) '() '(2 3 4) '(5))"
 
 # syntax (suite)
 run let1 '1' '(let ((x 1)) x)'

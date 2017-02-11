@@ -889,18 +889,22 @@ static Obj *apply_func(void *root, Obj **env, Obj **fn, Obj **args) {
 }
 
 // Apply fn with args.
-static Obj *apply(void *root, Obj **env, Obj **fn, Obj **args) {
+static Obj *apply(void *root, Obj **env, Obj **fn, Obj **args, bool do_eval) {
   if (!is_list(*args)) {
-    error("argument must be a list");
+    error("apply: argument must be a list");
   }
   if ((*fn)->type == TPRI)
     return (*fn)->priv(root, env, args);
   if ((*fn)->type == TFUN) {
     DEFINE1(root, eargs);
-    *eargs = eval_list(root, env, args);
+    if (do_eval) {
+      *eargs = eval_list(root, env, args);
+    } else {
+      *eargs = *args;
+    }
     return apply_func(root, env, fn, eargs);
   }
-  error("not supported");
+  error("apply: not supported");
 }
 
 // Searches for a variable by symbol. Returns null if not found.
@@ -966,7 +970,7 @@ static Obj *eval(void *root, Obj **env, Obj **obj) {
     if ((*fn)->type != TPRI && (*fn)->type != TFUN) {
       error("The head of a list must be a function");
     }
-    return apply(root, env, fn, args);
+    return apply(root, env, fn, args, true);
   }
   default:
     error("Bug: eval: Unknown tag type: %d", (*obj)->type);
@@ -1122,7 +1126,7 @@ static Obj *prim_apply(void *root, Obj **env, Obj **list) {
   if ((*args)->type != TCELL)
     error("apply: 2nd argument is not a list");
 
-  return apply(root, env, fn, args);
+  return apply(root, env, fn, args, false);
 }
 
 // (type expr)
@@ -1788,11 +1792,11 @@ void setup_repl(void *root, Obj **env) {
 
   while ((line = linenoise("shi> ")) != NULL) {
     if (line[0] != '\0' && line[0] != ',') {
+      linenoiseHistoryAdd(line);
+      linenoiseHistorySave(hist_path);
       *val = eval_input(root, env, line);
       print(*val);
       printf("\n");
-      linenoiseHistoryAdd(line);
-      linenoiseHistorySave(hist_path);
     } else if (!strncmp(line, ",quit", 5)) {
       free(line);
       break;
