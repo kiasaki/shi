@@ -66,11 +66,6 @@
 (defmacro unless (test . body)
   (list 'if (list 'not test) (cons 'do body)))
 
-; Functions
-; ==========================
-
-(defn identity (x) x)
-
 ; Lists
 ; ==========================
 
@@ -150,6 +145,23 @@
 (defn odd? (x)
   (not (pair? x)))
 
+(defn add1 (x)
+  (+ x 1))
+
+(defn sub1 (x)
+  (- x 1))
+
+(defn min (x y)
+  (if (< x y) x y))
+
+(defn max (x y)
+  (if (> x y) x y))
+
+(defn abs (x)
+  (cond (= x 0) 0
+        (< x 0) (- x)
+        x))
+
 ; Iteration
 ; ==========================
 
@@ -216,6 +228,19 @@
   (if (empty? xs) t
       (empty? (rest xs)) (first xs)
       (list 'if (first xs) (cons 'and (rest xs)) nil)))
+
+
+; Functions
+; ==========================
+
+(defn identity (x) x)
+
+(defn compose fns
+  (def call (fn (fns args)
+    (if (cdr fns)
+          ((car fns) (call (cdr fns) args))
+          (apply (car fns) args))))
+  (fn args (call fns args)))
 
 
 ; Boxes
