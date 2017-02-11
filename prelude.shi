@@ -77,7 +77,7 @@
 ; cons - Primitive
 ; car - Primitive
 ; cdr - Primitive
-; setcar - Primitive
+; set-car! - Primitive
 ; while - Primitive
 
 (defn first (x)
@@ -200,7 +200,10 @@
 ; Conditionals (suite)
 ; ==========================
 
-; TODO eql
+(defn eql? (a b)
+  (cond (and (int? a) (int? b))
+          (= a b)
+        (eq? a b)))
 
 (defmacro or xs
   (unless (empty? xs)
@@ -225,7 +228,7 @@
   (car box))
 
 (defn swap! (box f)
-  (setcar box (f (unbox box))))
+  (set-car! box (f (unbox box))))
 
 
 ; A-List
@@ -243,7 +246,7 @@
 (defn alist-has? (al k)
   (def found? nil)
   (dolist (item al found?)
-    (when (eq? (first item) k)
+    (when (eql? (first item) k)
       (set found? t))))
 
 (defn alist-get (al . args)
@@ -252,14 +255,14 @@
   (if (cdr args)
     (set res (second args)))
   (dolist (item al res)
-    (when (eq? (car item) key)
+    (when (eql? (car item) key)
       (set res (cdr item)))))
 
 (defn alist-set* (al k v)
   (reduce
     (fn (coll item)
       (cond
-        (eq? (first item) k) (cons (cons k v) coll)
+        (eql? (first item) k) (cons (cons k v) coll)
         else (cons item coll)))
     (list) al))
 
@@ -407,3 +410,131 @@
     (set last-read (read fd 255)))
   (close fd)
   contents)
+
+; HTTP
+; ==========================
+
+(def *http-codes* (list
+  (cons 100 "Continue")
+  (cons 101 "Switching Protocols")
+  (cons 102 "Processing")
+  (cons 200 "OK")
+  (cons 201 "Created")
+  (cons 202 "Accepted")
+  (cons 203 "Non-Authoritative Information")
+  (cons 204 "No Content")
+  (cons 205 "Reset Content")
+  (cons 206 "Partial Content")
+  (cons 207 "Multi-Status")
+  (cons 208 "Already Reported")
+  (cons 226 "IM Used")
+  (cons 300 "Multiple Choices")
+  (cons 301 "Moved Permanently")
+  (cons 302 "Found")
+  (cons 303 "See Other")
+  (cons 304 "Not Modified")
+  (cons 305 "Use Proxy")
+  (cons 307 "Temporary Redirect")
+  (cons 308 "Permanent Redirect")
+  (cons 400 "Bad Request")
+  (cons 401 "Unauthorized")
+  (cons 402 "Payment Required")
+  (cons 403 "Forbidden")
+  (cons 404 "Not Found")
+  (cons 405 "Method Not Allowed")
+  (cons 406 "Not Acceptable")
+  (cons 407 "Proxy Authentication Required")
+  (cons 408 "Request Timeout")
+  (cons 409 "Conflict")
+  (cons 410 "Gone")
+  (cons 411 "Length Required")
+  (cons 412 "Precondition Failed")
+  (cons 413 "Payload Too Large")
+  (cons 414 "URI Too Long")
+  (cons 415 "Unsupported Media Type")
+  (cons 416 "Range Not Satisfiable")
+  (cons 417 "Expectation Failed")
+  (cons 418 "I'm a teapot")
+  (cons 421 "Misdirected Request")
+  (cons 422 "Unprocessable Entity")
+  (cons 423 "Locked")
+  (cons 424 "Failed Dependency")
+  (cons 425 "Unordered Collection")
+  (cons 426 "Upgrade Required")
+  (cons 428 "Precondition Required")
+  (cons 429 "Too Many Requests")
+  (cons 431 "Request Header Fields Too Large")
+  (cons 451 "Unavailable For Legal Reasons")
+  (cons 500 "Internal Server Error")
+  (cons 501 "Not Implemented")
+  (cons 502 "Bad Gateway")
+  (cons 503 "Service Unavailable")
+  (cons 504 "Gateway Timeout")
+  (cons 505 "HTTP Version Not Supported")
+  (cons 506 "Variant Also Negotiates")
+  (cons 507 "Insufficient Storage")
+  (cons 508 "Loop Detected")
+  (cons 509 "Bandwidth Limit Exceeded")
+  (cons 510 "Not Extended")
+  (cons 511 "Network Authentication Required")))
+
+(defn http:server (host port)
+  (unless (str? host) (error "http:server: host not string"))
+  (unless (int? port) (error "http:server: port not int"))
+
+  (def backlog-len 32)
+  (def listen-fd (socket PF_INET SOCK_STREAM 0))
+  (bind-inet listen-fd host port)
+  (listen listen-fd backlog-len)
+
+  (box (list
+         (cons 'listen-sock listen-fd)
+         (cons 'running nil)
+         (cons 'handlers '()))))
+
+(defn http:add (srv method path handler-fn)
+  (swap! srv (fn (srv)
+    (alist-set srv 'handlers
+      (cons
+        (list (cons 'method method)
+              (cons 'path path)
+              (cons 'handler-fn handler-fn))
+        (alist-get srv 'handlers))))))
+
+(defn http:close (srv)
+  (swap! srv (fn (srv) (alist-set srv 'running nil))))
+
+(defn http:listen (srv)
+  (swap! srv (fn (srv) (alist-set srv 'running t)))
+  (def client-fd nil)
+  (while (alist-get @srv 'running)
+    ; Read
+    (set client-fd (accept (alist-get @srv 'listen-sock)))
+    (def req (list))
+    (def res
+      (list
+        (cons 'code 200)
+        (cons 'body "")
+        (cons 'headers (list (cons 'Content-Type "text/plain")))))
+    (def handler-fn (alist-get (car (alist-get @srv 'handlers)) 'handler-fn))
+
+    ; Handle
+    (set res (handler-fn req res))
+
+    ; Write
+    (write client-fd "HTTP/1.1 ")
+    (write client-fd (pr-str (alist-get res 'code)))
+    (write client-fd (str " " (alist-get *http-codes* (alist-get res 'code)) "\n"))
+    ; Write: headers
+    (dolist (h (alist-get res 'headers))
+      (write client-fd (str (pr-str (car h)) ": " (cdr h) "\n")))
+    (write client-fd (str "Connection: close\n"))
+    ; Write: body
+    (def body-len (str-len (alist-get res 'body)))
+    (when (> body-len 0)
+      (write client-fd (str "Content-Length: " (pr-str body-len) "\n\n"))
+      (write client-fd (alist-get res 'body)))
+
+    (sleep 500)
+    (close client-fd))
+  (close (alist-get @srv 'listen-sock)))

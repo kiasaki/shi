@@ -1,32 +1,13 @@
-(fn ()
-(println "starting")
+; http
 
 (def host "0.0.0.0")
-(def port 8080)
-(def backlog-len 32)
+(def port 8000)
 
-(def listen-fd (socket PF_INET SOCK_STREAM 0))
+(def srv (http:server host port))
 
-(bind-inet listen-fd host port)
-(listen listen-fd backlog-len)
+(http:add srv 'GET "/" (fn (req res)
+  (set res (alist-set res 'headers (alist-set (alist-get res 'headers) 'Content-Type "text/html")))
+  (alist-set res 'body "<h1>Hello</h1><p>World!</p>")))
 
-(def *running* t)
-(def client-fd nil)
-
-; Handle SIGINT and gracefully shutdown
-; (signal SIGINT (fn () (set *running* nil)))
-
-(while *running*
-  (set client-fd (accept listen-fd))
-  (write client-fd "HTTP/1.1 200 OK
-Content-Length: 12
-Connection: close
-Content-Type: text/plain
-
-Hello world!")
-  (sleep 500)
-  (close client-fd))
-
-(close listen-fd)
-(exit 0)
-)
+(println (str "starting on port: " (pr-str port)))
+(http:listen srv)
