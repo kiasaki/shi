@@ -23,6 +23,8 @@
 #define SIGCHLD SIGCLD
 #endif
 
+static const char *VERSION = "0.1.0";
+
 static __attribute((noreturn)) void error(char *fmt, ...) {
   va_list ap;
   va_start(ap, fmt);
@@ -1601,7 +1603,7 @@ static void add_primitive(void *root, Obj **env, char *name, Primitive *fn) {
 }
 
 static void define_constants(void *root, Obj **env) {
-  ADD_ROOT(root, 6);
+  ADD_ROOT(root, 8);
 
   Obj **tsym = (Obj **)(root_ADD_ROOT_ + 1);
   *tsym = intern(root, "t");
@@ -1611,14 +1613,20 @@ static void define_constants(void *root, Obj **env) {
   *nsym = intern(root, "nil");
   add_variable(root, env, nsym, &Nil);
 
-  Obj **pf_inet = (Obj **)(root_ADD_ROOT_ + 3);
-  Obj **pf_inet_val = (Obj **)(root_ADD_ROOT_ + 4);
+  Obj **system_version = (Obj **)(root_ADD_ROOT_ + 3);
+  Obj **system_version_val = (Obj **)(root_ADD_ROOT_ + 4);
+  *system_version = intern(root, "*system-version*");
+  *system_version_val = make_string(root, (char *)VERSION);
+  add_variable(root, env, system_version, system_version_val);
+
+  Obj **pf_inet = (Obj **)(root_ADD_ROOT_ + 5);
+  Obj **pf_inet_val = (Obj **)(root_ADD_ROOT_ + 6);
   *pf_inet = intern(root, "PF_INET");
   *pf_inet_val = make_int(root, PF_INET);
   add_variable(root, env, pf_inet, pf_inet_val);
 
-  Obj **sock_stream = (Obj **)(root_ADD_ROOT_ + 5);
-  Obj **sock_stream_val = (Obj **)(root_ADD_ROOT_ + 6);
+  Obj **sock_stream = (Obj **)(root_ADD_ROOT_ + 7);
+  Obj **sock_stream_val = (Obj **)(root_ADD_ROOT_ + 8);
   *sock_stream = intern(root, "SOCK_STREAM");
   *sock_stream_val = make_int(root, SOCK_STREAM);
   add_variable(root, env, sock_stream, sock_stream_val);
@@ -1821,10 +1829,20 @@ int main(int argc, char **argv) {
   // Constants and primitives
   Symbols = Nil;
   void *root = NULL;
-  DEFINE1(root, env);
+  DEFINE4(root, env, sh_args_sym, sh_args, sh_arg);
   *env = make_env(root, &Nil, &Nil);
   define_constants(root, env);
   define_primitives(root, env);
+
+  // Register shell args in env
+  *sh_args_sym = intern(root, "*args*");
+  *sh_args = Nil;
+  for (int i = 0; i < argc; i++) {
+    *sh_arg = make_string(root, argv[i]);
+    *sh_args = cons(root, sh_arg, sh_args);
+  }
+  *sh_args = reverse(*sh_args);
+  add_variable(root, env, sh_args_sym, sh_args);
 
   // Read and evaluate prelude
   char *prelude_contents = file_read_all("prelude.shi");

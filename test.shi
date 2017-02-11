@@ -1,5 +1,7 @@
 ; http
 
+(prn *args*)
+
 (def host "0.0.0.0")
 (def port 8000)
 
