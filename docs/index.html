@@ -1,2 +1,451 @@
-<img src="/assets/logo.png" />
-Shi
+<!DOCTYPE html>
+<title>Shi Language</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="assets/tachyons.min.css" />
+<style>
+  * {
+    box-sizing: border-box;
+  }
+  a, a:visited {
+    color: #A463F2;
+  }
+  #sidebar strong {
+    display: inline-block;
+    margin: 1.5em 0 0.5em 0;
+  }
+  #sidebar a {
+    text-decoration: none;
+  }
+  #sidebar a:hover {
+    text-decoration: underline;
+  }
+</style>
+
+<div class="center pa4 mw8">
+  <header class="tl">
+    <img src="assets/logo.png" style="height: 100px;" />
+    <h1 class="fw3 dib f1 ma0 ml4 relative top--2">Shi</h1>
+  </header>
+
+  <div class="cf">
+    <aside class="fl w-25 pr4 tl" id="sidebar">
+      <p class="mt0">
+        <h3 class="mb0">Language Reference</h3>
+
+        <div>
+          <strong class="b">Basics</strong>
+        </div>
+        <div>
+          <a href="#d-def">def</a>
+        </div>
+        <div>
+          <a href="#d-set">set</a>
+        </div>
+        <div>
+          <a href="#d-fn">fn</a>
+        </div>
+        <div>
+          <a href="#d-defn">defn</a>
+        </div>
+        <div>
+          <a href="#d-do">do</a>
+        </div>
+        <div>
+          <a href="#d-while">while</a>
+        </div>
+        <div>
+          <a href="#d-apply">apply</a>
+        </div>
+        <div>
+          <a href="#d-eval">eval</a>
+        </div>
+
+
+        <div>
+          <strong class="b">Conditionals</strong>
+        </div>
+        <div>
+          <a href="#d-if">if</a>
+        </div>
+        <div>
+          <a href="#d-cond">cond</a>
+        </div>
+        <div>
+          <a href="#d-not">not</a>
+        </div>
+        <div>
+          <a href="#d-when">when</a>
+        </div>
+        <div>
+          <a href="#d-unless">unless</a>
+        </div>
+        <div>
+          <a href="#d-or">or</a>
+        </div>
+        <div>
+          <a href="#d-and">and</a>
+        </div>
+
+
+        <div>
+          <strong class="b">Constants</strong>
+        </div>
+        <div>
+          <a href="#d-t">t</a>
+        </div>
+        <div>
+          <a href="#d-nil">nil</a>
+        </div>
+        <div>
+          <a href="#d-star-args-star">*args*</a>
+        </div>
+        <div>
+          <a href="#d-star-system-version-star">*system-version*</a>
+        </div>
+
+
+        <div>
+          <strong class="b">Types</strong>
+        </div>
+        <div>
+          <a href="#d-type">type</a>
+        </div>
+        <div>
+          <a href="#d-eq-qm">eq?</a>
+        </div>
+        <div>
+          <a href="#d-eql-qm">eql?</a>
+        </div>
+        <div><a href="#d-true-qm">true?</a></div>
+        <div><a href="#d-nil-qm">nil?</a></div>
+        <div><a href="#d-int-qm">int?</a></div>
+        <div><a href="#d-str-qm">str?</a></div>
+        <div><a href="#d-cons-qm">cons?</a></div>
+        <div><a href="#d-list-qm">list?</a></div>
+        <div><a href="#d-sym-qm">sym?</a></div>
+        <div><a href="#d-prim-qm">prim?</a></div>
+        <div><a href="#d-fn-qm">fn?</a></div>
+        <div><a href="#d-macro-qm">macro?</a></div>
+        <div><a href="#d-atom-qm">atom?</a></div>
+
+
+        <div>
+          <strong class="b">Macros</strong>
+        </div>
+        <div>
+          <a href="#d-macro">macro</a>
+        </div>
+        <div>
+          <a href="#d-defmacro">defmacro</a>
+        </div>
+        <div>
+          <a href="#d-quote">quote (')</a>
+        </div>
+        <div>
+          <a href="#d-quasiquote">quasiquote (`)</a>
+        </div>
+        <div>
+          <a href="#d-unquote">unquote (,)</a>
+        </div>
+        <div>
+          <a href="#d-unquote-splicing">unquote-splicing (,@)</a>
+        </div>
+        <div>
+          <a href="#d-gemsym">gensym</a>
+        </div>
+        <div>
+          <a href="#d-macro-expand">macro-expand</a>
+        </div>
+
+
+        <div>
+          <strong class="b">Strings</strong>
+        </div>
+        <div>
+          <a href="#d-str">str</a>
+        </div>
+        <div>
+          <a href="#d-str-len">str-len</a>
+        </div>
+        <div>
+          <a href="#d-pr-str">pr-str</a>
+        </div>
+
+
+        <div>
+          <strong class="b">Numbers</strong>
+        </div>
+        <div>
+          <a href="#d-plus">+</a>
+        </div>
+        <div>
+          <a href="#d-minus">-</a>
+        </div>
+        <div>
+          <a href="#d-lt">&lt;</a>
+        </div>
+        <div>
+          <a href="#d-lt-eq">&lt;=</a>
+        </div>
+        <div>
+          <a href="#d-gt">&gt;</a>
+        </div>
+        <div>
+          <a href="#d-gt-eq">&gt;=</a>
+        </div>
+        <div>
+          <a href="#d-eq">=</a>
+        </div>
+        <div>
+          <a href="#d-slash-eq">/=</a>
+        </div>
+        <div>
+          <a href="#d-pair-eq">pair?</a>
+        </div>
+        <div>
+          <a href="#d-odd-eq">odd?</a>
+        </div>
+        <div>
+          <a href="#d-add1">add1</a>
+        </div>
+        <div>
+          <a href="#d-sub1">sub1</a>
+        </div>
+        <div>
+          <a href="#d-min">min</a>
+        </div>
+        <div>
+          <a href="#d-max">max</a>
+        </div>
+        <div>
+          <a href="#d-abs">abs</a>
+        </div>
+        <div>
+          <a href="#d-range">range</a>
+        </div>
+        <div>
+          <a href="#d-rand">rand</a>
+        </div>
+        <div>
+          <a href="#d-num-to-str">num->str</a>
+        </div>
+
+
+        <div>
+          <strong class="b">Lists</strong>
+        </div>
+        <div>
+          <a href="#d-list">list</a>
+        </div>
+        <div>
+          <a href="#d-cons">cons</a>
+        </div>
+        <div>
+          <a href="#d-set-car-bang">set-car!</a>
+        </div>
+        <div>
+          <a href="#d-car">car</a>
+        </div>
+        <div>
+          <a href="#d-first">first</a>
+        </div>
+        <div>
+          <a href="#d-cdr">cdr</a>
+        </div>
+        <div>
+          <a href="#d-rest">rest</a>
+        </div>
+        <div><a href="#d-caar">caar</a></div>
+        <div><a href="#d-cadr">cadr</a></div>
+        <div><a href="#d-second">second</a></div>
+        <div><a href="#d-cdar">cdar</a></div>
+        <div><a href="#d-cddr">cddr</a></div>
+        <div><a href="#d-caaar">caaar</a></div>
+        <div><a href="#d-caadr">caadr</a></div>
+        <div><a href="#d-cadar">cadar</a></div>
+        <div><a href="#d-caddr">caddr</a></div>
+        <div><a href="#d-third">third</a></div>
+        <div><a href="#d-cdaar">cdaar</a></div>
+        <div><a href="#d-cdadr">cdadr</a></div>
+        <div><a href="#d-cddar">cddar</a></div>
+        <div><a href="#d-cdddr">cdddr</a></div>
+        <div>
+          <a href="#d-length">length</a>
+        </div>
+        <div>
+          <a href="#d-reverse">reverse</a>
+        </div>
+        <div>
+          <a href="#d-nth">nth</a>
+        </div>
+        <div>
+          <a href="#d-empty-eq">empty?</a>
+        </div>
+
+
+        <div>
+          <strong class="b">Iteration</strong>
+        </div>
+        <div>
+          <a href="#d-dolist">dolist</a>
+        </div>
+        <div>
+          <a href="#d-dotimes">dotimes</a>
+        </div>
+        <div>
+          <a href="#d-map">map</a>
+        </div>
+        <div>
+          <a href="#d-reduce">reduce</a>
+        </div>
+
+
+        <div>
+          <strong class="b">Functions</strong>
+        </div>
+        <div>
+          <a href="#d-identity">identity</a>
+        </div>
+        <div>
+          <a href="#d-compose">compose</a>
+        </div>
+        <div>
+          <a href="#d---gt">-&gt;</a>
+        </div>
+
+
+        <div>
+          <strong class="b">Boxes</strong>
+        </div>
+        <div>
+          <a href="#d-box">box</a>
+        </div>
+        <div>
+          <a href="#d-unbox">unbox (@)</a>
+        </div>
+        <div>
+          <a href="#d-swap-bang">swap!</a>
+        </div>
+
+
+        <div>
+          <strong class="b">Association Lists</strong>
+        </div>
+        <div>
+          <a href="#d-alist-qm">alist?</a>
+        </div>
+        <div>
+          <a href="#d-alist-has-qm">alist-has?</a>
+        </div>
+        <div>
+          <a href="#d-alist-get">alist-get</a>
+        </div>
+        <div>
+          <a href="#d-alist-set">alist-set</a>
+        </div>
+        <div>
+          <a href="#d-alist-set-in">alist-set-in</a>
+        </div>
+        <div>
+          <a href="#d-alist-update">alist-update</a>
+        </div>
+        <div>
+          <a href="#d-alist-update-in">alist-update-in</a>
+        </div>
+        <div>
+          <a href="#d-alist-del">alist-del</a>
+        </div>
+        <div>
+          <a href="#d-alist-keys">alist-keys</a>
+        </div>
+        <div>
+          <a href="#d-alist-vals">alist-vals</a>
+        </div>
+
+
+        <div><strong class="b">Collections</strong></div>
+        <div><a href="#d-conj">conj</a></div>
+        <div><a href="#d-extend">extend</a></div>
+
+
+        <div><strong class="b">OS</strong></div>
+        <div><a href="#d-star-stdin-star">*stdin*</a></div>
+        <div><a href="#d-star-stdout-star">*stdout*</a></div>
+        <div><a href="#d-star-stderr-star">*stderr*</a></div>
+        <div><a href="#d-star-in-star">*in*</a></div>
+        <div><a href="#d-star-out-star">*out*</a></div>
+        <div><a href="#d-open">open</a></div>
+        <div><a href="#d-close">close</a></div>
+        <div><a href="#d-read">read</a></div>
+        <div><a href="#d-write">write</a></div>
+        <div><a href="#d-newline">newline</a></div>
+        <div><a href="#d-pr">pr</a></div>
+        <div><a href="#d-prn">prn</a></div>
+        <div><a href="#d-print">print</a></div>
+        <div><a href="#d-println">println</a></div>
+        <div><a href="#d-read-all">read-all</a></div>
+        <div><a href="#d-exit">exit</a></div>
+        <div><a href="#d-sleep">sleep</a></div>
+        <div><a href="#d-seconds">seconds</a></div>
+
+
+        <div><strong class="b">Net</strong></div>
+        <div><a href="#d-socket">socket</a></div>
+        <div><a href="#d-bind-inet">bind-inet</a></div>
+        <div><a href="#d-listen">listen</a></div>
+        <div><a href="#d-accept">accept</a></div>
+
+
+        <div><strong class="b">HTTP</strong></div>
+        <div><a href="#d-star-http-codes-star">*http-codes*</a></div>
+        <div><a href="#d-http-C-server">http:server</a></div>
+        <div><a href="#d-http-C-listen">http:listen</a></div>
+        <div><a href="#d-http-C-close">http:close</a></div>
+        <div><a href="#d-http-C-add">http:add</a></div>
+        <div><a href="#d-http-C-get">http:get</a></div>
+        <div><a href="#d-http-C-post">http:post</a></div>
+        <div><a href="#d-http-C-put">http:put</a></div>
+        <div><a href="#d-http-C-delete">http:delete</a></div>
+        <div><a href="#d-http-C-head">http:head</a></div>
+      </p>
+    </aside>
+    <main class="fl w-75">
+      <h2>Language Reference</h2>
+
+      <h3>Basics</h3>
+
+      <article class="mb4">
+        <header>
+          <span class="code b f3">def</span>
+          <span>primitive</span>
+        </header>
+        <div class="bg-near-white code gray pa3 mt3">
+          (def name value)
+        </div>
+        <p>
+          Assigns <code>value</code> to the symbol <code>name</code> in the current environment.
+        </p>
+      </article>
+
+      <article class="mb4">
+        <header>
+          <span class="code b f3">set</span>
+          <span>primitive</span>
+        </header>
+        <div class="bg-near-white code gray pa3 mt3">
+          (set name value)
+        </div>
+        <p>
+          Assigns <code>value</code> to the symbol <code>name</code> in the environment where it
+          was defined. If <code>name</code> was not previouly defined, setting it is an error.
+        </p>
+      </article>
+
+
+    </main>
+  </div>
+
+  <footer class="mt4 tc gray">
+    Shi Language &bull; <a href="https://github.com/shi-lang/shi">Source Code</a> &bull; MIT Licensed
+  </footer>
+</div>

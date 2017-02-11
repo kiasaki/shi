@@ -75,11 +75,8 @@
 ; set-car! - Primitive
 ; while - Primitive
 
-(defn first (x)
-  (car x))
-
-(defn rest (x)
-  (cdr x))
+(def first car)
+(def rest cdr)
 
 (defn caar (x) (car (car x)))
 (defn cadr (x) (car (cdr x)))
@@ -549,18 +546,6 @@
          (cons 'running nil)
          (cons 'handlers '()))))
 
-(defn http:add (srv method path handler-fn)
-  (swap! srv (fn (srv)
-    (alist-set srv 'handlers
-      (cons
-        (list (cons 'method method)
-              (cons 'path path)
-              (cons 'handler-fn handler-fn))
-        (alist-get srv 'handlers))))))
-
-(defn http:close (srv)
-  (swap! srv (fn (srv) (alist-set srv 'running nil))))
-
 (defn http:listen (srv)
   (swap! srv (fn (srv) (alist-set srv 'running t)))
   (def client-fd nil)
@@ -596,3 +581,30 @@
       (sleep 500)
       (close client-fd)))
   (close (alist-get @srv 'listen-sock)))
+
+(defn http:close (srv)
+  (swap! srv (fn (srv) (alist-set srv 'running nil))))
+
+(defn http:add (srv method path handler-fn)
+  (swap! srv (fn (srv)
+    (alist-set srv 'handlers
+      (cons
+        (list (cons 'method method)
+              (cons 'path path)
+              (cons 'handler-fn handler-fn))
+        (alist-get srv 'handlers))))))
+
+(defn http:get (srv path handler-fn)
+  (http:add srv 'GET path handler-fn))
+
+(defn http:post (srv path handler-fn)
+  (http:add srv 'POST path handler-fn))
+
+(defn http:put (srv path handler-fn)
+  (http:add srv 'PUT path handler-fn))
+
+(defn http:del (srv path handler-fn)
+  (http:add srv 'DELETE path handler-fn))
+
+(defn http:head (srv path handler-fn)
+  (http:add srv 'HEAD path handler-fn))
