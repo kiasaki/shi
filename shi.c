@@ -17,7 +17,8 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 
-#include "linenoise.h"
+#include "vendor/linenoise.h"
+#include "vendor/pcg_basic.h"
 
 #ifndef SIGCHLD
 #define SIGCHLD SIGCLD
@@ -1342,6 +1343,18 @@ static Obj *prim_num_eq(void *root, Obj **env, Obj **list) {
   return x->intv == y->intv ? True : Nil;
 }
 
+// (rand <integer>)
+static Obj *prim_rand(void *root, Obj **env, Obj **list) {
+  if (length(*list) != 1)
+    error("rand: takes exactly 1 argument");
+  Obj *values = eval_list(root, env, list);
+  Obj *x = values->car;
+  if (x->type != TINT)
+    error("rand: 1st arg is not an int");
+
+  return make_int(root, pcg32_boundedrand(values->car->intv));
+}
+
 // }}}
 
 // {{{ primitives: os
@@ -1666,6 +1679,7 @@ static void define_primitives(void *root, Obj **env) {
   add_primitive(root, env, "-", prim_minus);
   add_primitive(root, env, "<", prim_lt);
   add_primitive(root, env, "=", prim_num_eq);
+  add_primitive(root, env, "rand", prim_rand);
 
   // OS
   add_primitive(root, env, "pr-str", prim_pr_str);
@@ -1819,6 +1833,9 @@ void setup_repl(void *root, Obj **env) {
 }
 
 int main(int argc, char **argv) {
+  // Seed rand
+  pcg32_srandom(time(NULL) ^ (intptr_t)&printf, (intptr_t)&gc);
+
   // Debug flags
   debug_gc = get_env_flag("MINILISP_DEBUG_GC");
   always_gc = get_env_flag("MINILISP_ALWAYS_GC");

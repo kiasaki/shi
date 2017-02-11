@@ -4,8 +4,8 @@ CFLAGS=-g -Os -W -Wall
 
 .PHONY: clean test
 
-shi: shi.c linenoise.c
-	$(CC) $(CFLAGS) shi.c linenoise.c -o shi
+shi: shi.c vendor/*.c
+	$(CC) $(CFLAGS) shi.c vendor/linenoise.c vendor/pcg_basic.c -o shi
 
 clean:
 	rm -f shi *~
