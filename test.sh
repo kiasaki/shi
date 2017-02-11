@@ -1,5 +1,7 @@
 #!/bin/bash
 
+filter="$1"
+
 function fail() {
   printf '\e[1;31m[ERROR]\e[0m '
   echo "$1"
@@ -13,7 +15,9 @@ function do_run() {
     fail "$error"
   fi
 
-  result=$(echo "$3" | ./shi 2> /dev/null | tail -1)
+  result=$(echo "(prn (do 
+  $3
+  ))" | ./shi 2> /dev/null | tail -1)
   if [ "$result" != "$2" ]; then
     echo FAILED
     fail "$2 expected, but got $result"
@@ -21,11 +25,13 @@ function do_run() {
 }
 
 function run() {
-  echo -n "Testing $1 ... "
-  # Run the tests twice to test the garbage collector with different settings.
-  MINILISP_ALWAYS_GC= do_run "$@"
-  MINILISP_ALWAYS_GC=1 do_run "$@"
-  echo ok
+  if [[ "$1" =~ "$filter" ]]; then
+    echo -n "Testing $1 ... "
+    # Run the tests twice to test the garbage collector with different settings.
+    MINILISP_ALWAYS_GC= do_run "$@"
+    MINILISP_ALWAYS_GC=1 do_run "$@"
+    echo ok
+  fi
 }
 
 # Basic data types
@@ -200,6 +206,11 @@ run dotimes1 '0123()' '(dotimes (x 4) (pr x))'
 run map '(1 2 3 4 5)' '(map (fn (x) (+ x 1)) (range 0 5))'
 run reduce '10' '(reduce + (range 0 5))'
 run reduce '15' '(reduce + 5 (range 0 5))'
+
+# alist
+run alist?1 "t" "(alist? '())"
+run alist?2 "t" "(alist? '((a . 1)))"
+run alist?3 "()" "(alist? 'a)"
 
 # conditionals (suite)
 run or1 't' "(or t nil)"

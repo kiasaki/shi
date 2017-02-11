@@ -1223,7 +1223,7 @@ static Obj *prim_cons(void *root, Obj **env, Obj **list) {
 static Obj *prim_car(void *root, Obj **env, Obj **list) {
   Obj *args = eval_list(root, env, list);
   if (args->car->type != TCELL || args->cdr != Nil)
-    error("Malformed car");
+    error("Malformed car: %s", pr_str(args));
   return args->car->car;
 }
 
@@ -1686,9 +1686,35 @@ static char *get_env_value(char *name, char *def) {
   return val && val[0] ? val : def;
 }
 
+char *fd_read_all(FILE *fd) {
+  int size = 0;
+  int chunksize = 1024;
+  char *contents = malloc(sizeof(char) * chunksize);
+
+  for (;;) {
+    int ret = read(fileno(fd), &contents[size], 128);
+    if (ret < 0) {
+      perror("fd_read_all");
+      exit(1);
+    }
+    if (ret == 0) {
+      contents = realloc(contents, sizeof(char) * (size + 1));
+      contents[size] = '\0';
+      break;
+    }
+
+    size += ret;
+
+    if (size + 128 + 1 >= chunksize) {
+      chunksize = chunksize * 2;
+      contents = realloc(contents, sizeof(char) * chunksize);
+    }
+  }
+  return contents;
+}
+
 char *file_read_all(char *path) {
-  bool use_stdin = path[0] == '-' && path[1] == '\0';
-  FILE *fd = use_stdin ? stdin : fopen(path, "r");
+  FILE *fd = fopen(path, "r");
   if (fd == NULL) {
     error("file_read_all: failed to open file: %s", path);
   }
@@ -1701,16 +1727,13 @@ char *file_read_all(char *path) {
   // Read all bytes
   char *content = (char *)malloc(sizeof(char) * (size + 1));
   int len = fread(content, 1, size, fd);
+  if (len < 0) {
+    perror("file_read_all");
+    exit(1);
+  }
   content[len] = '\0';
 
-  if (ferror(fd)) {
-    perror("file_read_all");
-  }
-
-  if (!use_stdin) {
-    fclose(fd);
-  }
-
+  fclose(fd);
   return content;
 }
 
@@ -1814,7 +1837,7 @@ int main(int argc, char **argv) {
 
   // If stdin is a file (not terminal) read, and eval
   if (!isatty(fileno(stdin))) {
-    char *stdin_contents = file_read_all("-");
+    char *stdin_contents = fd_read_all(stdin);
     eval_input(root, env, stdin_contents);
     free(stdin_contents);
     return 0;

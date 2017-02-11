@@ -231,9 +231,12 @@
 
 (defn alist? (al)
   (def all-cons? t)
-  (dolist (item al all-cons?)
-    (if (not (cons? item))
-      (set all-cons? nil))))
+  (cond
+    (not (list? al)) nil
+    (empty? al) t
+    (dolist (item al all-cons?)
+      (if (not (cons? item))
+        (set all-cons? nil)))))
 
 (defn alist-has? (al k)
   (def found? nil)
@@ -241,19 +244,27 @@
     (when (eq? (first item) k)
       (set found? t))))
 
-(defn alist-get (al k)
+(defn alist-get (al . args)
   (def res nil)
+  (def key (first args))
+  (if (cdr args)
+    (set res (second args)))
   (dolist (item al res)
-    (when (eq? (first item) k)
-      (set res (second item)))))
+    (when (eq? (car item) key)
+      (set res (cdr item)))))
 
-(defn alist-set (al k v)
+(defn alist-set* (al k v)
   (reduce
     (fn (coll item)
       (cond
         (eq? (first item) k) (cons (cons k v) coll)
         else (cons item coll)))
     (list) al))
+
+(defn alist-set (al k v)
+  (if (alist-has? al k)
+    (alist-set* al k v)
+    (cons (cons k v) al)))
 
 (defn alist-del (al k)
   (reduce

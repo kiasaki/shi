@@ -31,14 +31,23 @@ Hello world!")
 (exit 0)
 )
 
-(defn read-all (path)
-  (def fd (open path))
-  (def contents "")
-  (def last-read (read fd 255))
-  (while (> (str-len last-read) 0)
-    (set contents (str contents last-read))
-    (set last-read (read fd 255)))
-  (close fd)
-  contents)
 
-(println (read-all "test.txt"))
+(def al '((a . 1) (b . 2) (c . 3)))
+
+(prn (list "@al" al))
+
+(prn (list "alist?" (alist? al)))
+
+(prn (list "alist-has? b" (alist-has? al 'b)))
+(prn (list "alist-has? z" (alist-has? al 'z)))
+
+(prn (list "alist-get a" (alist-get al 'b)))
+(prn (list "alist-get z" (alist-get al 'z)))
+(prn (list "alist-get z 66" (alist-get al 'z 66)))
+
+(prn (list "alist-set c -1" (alist-set al 'c -1)))
+(prn (list "alist-set z 654" (alist-set al 'z 654)))
+
+(prn (list "alist-del a" (alist-del al 'a)))
+
+(prn (list "@al" al))
