@@ -102,7 +102,7 @@
 (defn cdddr (x) (cdr (cdr (cdr x))))
 
 (defn length (x)
-  (if (nil? x) 0
+  (cond (nil? x) 0
         (do
           (def i 1)
           (while (list? (cdr x))
@@ -163,7 +163,9 @@
   (def list-name (gensym))
   (list 'do
     (list 'def list-name list-val)
-    (list 'def var-name (list 'car list-name))
+    (list 'def var-name (list 'if
+      (list 'nil? list-name) nil
+      (list 'car list-name)))
     (cons 'while
       (cons (list 'and (list 'list? list-name) (list 'not (list 'empty? list-name)))
         (cons (list 'set var-name (list 'car list-name))
@@ -232,8 +234,8 @@
 (defn alist? (al)
   (def all-cons? t)
   (cond
+    (nil? al) t
     (not (list? al)) nil
-    (empty? al) t
     (dolist (item al all-cons?)
       (if (not (cons? item))
         (set all-cons? nil)))))
@@ -356,7 +358,7 @@
                           nil
                         (cadar x))
                       (vals (cdr x)))))
-     `((lambda ,(vars args) ,@body) ,@(vals args)))
+     `((fn ,(vars args) ,@body) ,@(vals args)))
    nil nil))
 
 ; IO

@@ -211,6 +211,17 @@ run reduce '15' '(reduce + 5 (range 0 5))'
 run alist?1 "t" "(alist? '())"
 run alist?2 "t" "(alist? '((a . 1)))"
 run alist?3 "()" "(alist? 'a)"
+run alist-has?1 "t" "(alist-has? '((a . 5)) 'a)"
+run alist-has?2 "()" "(alist-has? '((a . 5)) 'z)"
+run alist-get1 "5" "(alist-get '((a . 5)) 'a)"
+run alist-get2 "()" "(alist-get '((a . 5)) 'z)"
+run alist-get3 "10" "(alist-get '((a . 5)) 'z 10)"
+run alist-set1 "((a . 10))" "(alist-set '((a . 5)) 'a 10)"
+run alist-set2 "((a . 10))" "(alist-set '() 'a 10)"
+run alist-set3 "((z . 10) (a . 5))" "(alist-set '((a . 5)) 'z 10)"
+run alist-del1 "()" "(alist-del '((a . 5)) 'a)"
+run alist-del2 "()" "(alist-del '() 'a)"
+run alist-del3 "((a . 5))" "(alist-del '((a . 5)) 'z)"
 
 # conditionals (suite)
 run or1 't' "(or t nil)"
@@ -229,4 +240,4 @@ run and6 '5' "(and t 1 5)"
 #run extend '(1 2 3 4 5)' "(extend '(1) '() '(2 3 4) '(5))"
 
 # syntax (suite)
-#run let1 '1' '(let ((x 1)) x)'
+run let1 '1' '(let ((x 1)) x)'
