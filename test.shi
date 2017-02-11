@@ -1,15 +1,14 @@
 ; http
 
-(prn *args*)
-
 (def host "0.0.0.0")
 (def port 8000)
 
 (def srv (http:server host port))
 
 (http:add srv 'GET "/" (fn (req res)
-  (set res (alist-set res 'headers (alist-set (alist-get res 'headers) 'Content-Type "text/html")))
-  (alist-set res 'body "<h1>Hello</h1><p>World!</p>")))
+  (-> res
+    (alist-set-in '(headers Content-Type) "text/html")
+    (alist-set 'body "<h1>Hello</h1><p>World!</p>"))))
 
-(println (str "starting on port: " (pr-str port)))
+(println (str "server starting on port: " (pr-str port)))
 (http:listen srv)

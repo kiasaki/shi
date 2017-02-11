@@ -242,6 +242,18 @@
           (apply (car fns) args))))
   (fn args (call fns args)))
 
+(defmacro -> (x . forms)
+  (def loop (fn (x forms)
+    (if forms
+      (do
+        (def form (first forms))
+        (def threaded (if (list? form)
+                         (cons (first form) (cons x (rest form)))
+                         (list form x)))
+        (loop threaded (rest forms)))
+      x)))
+  (loop x forms))
+
 
 ; Boxes
 ; ==========================
@@ -295,6 +307,23 @@
   (if (alist-has? al k)
     (alist-set* al k v)
     (cons (cons k v) al)))
+
+(defn alist-set-in (al path v)
+  (if path
+    (alist-set al
+      (first path)
+      (alist-set-in (alist-get al (first path)) (rest path) v))
+    v))
+
+(defn alist-update (al k f)
+  (alist-set al k (f (alist-get al k))))
+
+(defn alist-update-in (al path f)
+  (if (rest path)
+    (alist-set al
+      (first path)
+      (alist-update-in (alist-get al (first path)) (rest path) f))
+    (alist-update al (first path) f)))
 
 (defn alist-del (al k)
   (reduce
