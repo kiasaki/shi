@@ -40,7 +40,7 @@ static __attribute((noreturn)) void error(char *fmt, ...) {
 
 // The Lisp object type
 enum {
-  // Regular objects visible from the user
+  // Regular values visible from the user
   TINT = 1,
   TSTR,
   TCELL,
@@ -51,10 +51,10 @@ enum {
   TMAC,
   TENV,
 
-  // Intermediary object only present during GC, points to obj in new semispace.
+  // Intermediary value only present during GC, points to obj in new semispace
   TMOVED,
 
-  // Const objects. They are statically allocated and will never be managed by GC.
+  // Constants, statically allocated and will never be managed by GC
   TTRUE,
   TNIL,
   TDOT,
@@ -213,6 +213,14 @@ static void gc(void *root);
   Val **var3 = (Val **)(root_ADD_ROOT_ + 3);                                   \
   Val **var4 = (Val **)(root_ADD_ROOT_ + 4)
 
+#define DEFINE5(root, var1, var2, var3, var4, var5)                            \
+  ADD_ROOT(root, 5);                                                           \
+  Val **var1 = (Val **)(root_ADD_ROOT_ + 1);                                   \
+  Val **var2 = (Val **)(root_ADD_ROOT_ + 2);                                   \
+  Val **var3 = (Val **)(root_ADD_ROOT_ + 3);                                   \
+  Val **var3 = (Val **)(root_ADD_ROOT_ + 4);                                   \
+  Val **var4 = (Val **)(root_ADD_ROOT_ + 5)
+
 // Round up the given value to a multiple of size. Size must be a power of 2. It
 // adds size - 1
 // first, then zero-ing the least significant bits to make the result a multiple
@@ -317,7 +325,7 @@ static void *alloc_semispace() {
   return malloc(MEMORY_SIZE);
 }
 
-static char *pr_str(Val *);
+static char *pr_str(void *root, Val *);
 
 // Copies the root objects.
 static void forward_root_objects(void *root) {
@@ -361,6 +369,10 @@ static void gc(void *root) {
     case TPRI:
       // Any of the above types does not contain a pointer to a GC-managed
       // object.
+      break;
+    case TOBJ:
+      scan1->props = forward(scan1->props);
+      scan1->proto = forward(scan1->proto);
       break;
     case TCELL:
       scan1->car = forward(scan1->car);
@@ -422,6 +434,13 @@ static Val *make_symbol(void *root, char *name) {
   return sym;
 }
 
+struct Val *make_obj(void *root, Val **proto, Val **props) {
+  Val *r = alloc(root, TOBJ, sizeof(Val *) * 2);
+  r->props = *props;
+  r->proto = *proto;
+  return r;
+}
+
 static Val *make_primitive(void *root, Primitive *fn) {
   Val *r = alloc(root, TPRI, sizeof(Primitive *));
   r->priv = fn;
@@ -455,6 +474,29 @@ static Val *acons(void *root, Val **x, Val **y, Val **a) {
 // }}}
 
 // {{{ util + pretty-print
+
+// May create a new symbol. If there's a symbol with the same name, it will not
+// create a new symbol but return the existing one.
+static Val *intern(void *root, char *name) {
+  for (Val *p = Symbols; p != Nil; p = p->cdr)
+    if (strcmp(name, p->car->symv) == 0)
+      return p->car;
+  DEFINE1(root, sym);
+  *sym = make_symbol(root, name);
+  Symbols = cons(root, sym, &Symbols);
+  return *sym;
+}
+
+static Val *obj_find(Val **obj, Val *sym) {
+  for (Val *p = *obj; p != Nil; p = p->proto) {
+    for (Val *cell = p->props; cell != Nil; cell = cell->cdr) {
+      Val *value = cell->car;
+      if (sym == value->car)
+        return value;
+    }
+  }
+  return NULL;
+}
 
 static int unescape(char *dest, char *src) {
   int i = 0;
@@ -492,23 +534,24 @@ static int unescape(char *dest, char *src) {
   return i;
 }
 
-static char *pr_str(Val *obj) {
+static char *pr_str(void *root, Val *obj) {
   char *buf = malloc(sizeof(char) * 2048);
   char *s;
+  Val *val;
   int len = 0;
 
   switch (obj->type) {
   case TCELL:
     len += sprintf(&buf[len], "(");
     for (;;) {
-      s = pr_str(obj->car);
+      s = pr_str(root, obj->car);
       len += sprintf(&buf[len], "%s", s);
       free(s);
       if (obj->cdr == Nil)
         break;
       if (obj->cdr->type != TCELL) {
         len += sprintf(&buf[len], " . ");
-        s = pr_str(obj->cdr);
+        s = pr_str(root, obj->cdr);
         len += sprintf(&buf[len], "%s", s);
         free(s);
         break;
@@ -522,6 +565,14 @@ static char *pr_str(Val *obj) {
     len += sprintf(&buf[len], "\"");
     len += unescape(&buf[len], obj->strv);
     len += sprintf(&buf[len], "\"");
+    return buf;
+  case TOBJ:
+    val = obj_find(&obj, intern(root, "name"));
+    if (val != NULL && val->cdr->type == TSTR) {
+      len += sprintf(&buf[len], "<object %s %p>", val->cdr->strv, obj);
+    } else {
+      len += sprintf(&buf[len], "<object %s %p>", "nil", obj);
+    }
     return buf;
 
 #define CASE(type, ...)                                                        \
@@ -550,8 +601,8 @@ static char *pr_str(Val *obj) {
 }
 
 // Prints the given object.
-static void print(Val *obj) {
-  char *str = pr_str(obj);
+static void print(void *root, Val *obj) {
+  char *str = pr_str(root, obj);
   printf("%s", str);
   free(str);
 }
@@ -574,18 +625,6 @@ static Val *reverse(Val *p) {
     ret = head;
   }
   return ret;
-}
-
-// May create a new symbol. If there's a symbol with the same name, it will not
-// create a new symbol but return the existing one.
-static Val *intern(void *root, char *name) {
-  for (Val *p = Symbols; p != Nil; p = p->cdr)
-    if (strcmp(name, p->car->symv) == 0)
-      return p->car;
-  DEFINE1(root, sym);
-  *sym = make_symbol(root, name);
-  Symbols = cons(root, sym, &Symbols);
-  return *sym;
 }
 
 // }}}
@@ -948,6 +987,7 @@ static Val *eval(void *root, Val **env, Val **obj) {
   switch ((*obj)->type) {
   case TINT:
   case TSTR:
+  case TOBJ:
   case TPRI:
   case TFUN:
   case TMAC:
@@ -1069,7 +1109,7 @@ static Val *prim_set(void *root, Val **env, Val **list) {
 static Val *prim_pr_str(void *root, Val **env, Val **list) {
   DEFINE2(root, tmp, s);
   *tmp = (*list)->car;
-  char *str = pr_str(eval(root, env, tmp));
+  char *str = pr_str(root, eval(root, env, tmp));
   *s = make_string(root, str);
   return *s;
 }
@@ -1165,6 +1205,9 @@ static Val *prim_type(void *root, Val **env, Val **list) {
   case TSYM:
     name = "sym";
     break;
+  case TOBJ:
+    name = "obj";
+    break;
   case TPRI:
     name = "prim";
     break;
@@ -1217,6 +1260,118 @@ static Val *prim_gensym(void *root, Val **env, Val **list) {
 
 // }}}
 
+// {{{ object
+
+// (obj proto props) ; nil|obj -> alist -> obj
+static Val *prim_obj(void *root, Val **env, Val **list) {
+  // We have 2 args?
+  if (length(*list) != 2) {
+    error("obj: expected exactly 2 args");
+  }
+
+  // 1st arg is nil or an object?
+  Val *args = eval_list(root, env, list);
+  if (args->car->type != TOBJ && args->car != Nil) {
+    error("obj: given non object or nil as prototype");
+  }
+
+  // 2nd arg is a list?
+  if (args->cdr->car->type != TCELL && args->cdr->car != Nil) {
+    error("obj: given non alist as properties");
+  }
+
+  // 2nd arg is an association list
+  for (Val *i = args->cdr->car; i != Nil; i = i->cdr) {
+    if (i->type != TCELL || i->car->cdr == Nil) {
+      error("obj: given non alist as properties");
+    } else if (i->car->car->type != TSYM) {
+      error("obj: given non symbol as property key");
+    }
+  }
+
+  DEFINE2(root, proto, props);
+  *proto = args->car;
+  *props = args->cdr->car;
+
+  return make_obj(root, proto, props);
+}
+
+static Val *prim_obj_get(void *root, Val **env, Val **list) {
+  if (length(*list) != 2) error("obj-get: expected exactly 2 args");
+  Val *args = eval_list(root, env, list);
+  if (args->car->type != TOBJ) error("obj-get: expected 1st argument to be object");
+  if (args->cdr->car->type != TSYM) error("obj-get: expected 2nd argument to be symbol");
+
+  DEFINE3(root, o, k, value);
+  *o = args->car;
+  *k = args->cdr->car;
+  *value = obj_find(o, *k);
+  if (*value == NULL) {
+    error("obj-get: unbound '%s'", args->cdr->car->symv);
+  }
+
+  return (*value)->cdr;
+}
+
+static Val *prim_obj_set(void *root, Val **env, Val **list) {
+  if (length(*list) != 3) error("obj-set: expected exactly 2 args");
+  Val *args = eval_list(root, env, list);
+  if (args->car->type != TOBJ) error("obj-set: expected 1st argument to be object");
+  if (args->cdr->car->type != TSYM) error("obj-set: expected 2nd argument to be symbol");
+
+  DEFINE4(root, o, k, v, value);
+  *o = args->car;
+  *k = args->cdr->car;
+  *v = args->cdr->cdr->car;
+  *value = obj_find(o, *k);
+  if (*value == NULL) {
+    (*o)->props = acons(root, k, v, o);
+  } else {
+    (*value)->cdr = *v;
+  }
+
+  return *o;
+}
+
+static Val *prim_obj_del(void *root, Val **env, Val **list) {
+  if (length(*list) != 2) error("obj-del: expected exactly 2 args");
+  Val *args = eval_list(root, env, list);
+  if (args->car->type != TOBJ) error("obj-del: expected 1st argument to be object");
+  if (args->cdr->car->type != TSYM) error("obj-del: expected 2nd argument to be symbol");
+
+  DEFINE3(root, o, k, v);
+  *o = args->car;
+  *k = args->cdr->car;
+  *v = args->cdr->cdr->car;
+
+  for (Val **i = &(*o)->props; *i != Nil; i = &(*i)->cdr) {
+    if ((*i)->car->car == *k) {
+      *i = (*i)->cdr;
+    }
+  }
+
+  return *o;
+}
+
+static Val *prim_obj_proto(void *root, Val **env, Val **list) {
+  if (length(*list) != 1) error("obj-proto: expected exactly 1 args");
+  Val *args = eval_list(root, env, list);
+  if (args->car->type != TOBJ) error("obj-proto: expected 1st argument to be object");
+
+  return args->car->proto;
+}
+
+static Val *prim_obj_proto_set(void *root, Val **env, Val **list) {
+  if (length(*list) != 2) error("obj-proto-set!: expected exactly 2 args");
+  Val *args = eval_list(root, env, list);
+  if (args->car->type != TOBJ) error("obj-proto-set!: expected 1st argument to be object");
+
+  args->car->proto = args->cdr->car;
+  return args->car;
+}
+
+// }}}
+
 // {{{ primitives: list
 
 // (cons expr expr)
@@ -1232,7 +1387,7 @@ static Val *prim_cons(void *root, Val **env, Val **list) {
 static Val *prim_car(void *root, Val **env, Val **list) {
   Val *args = eval_list(root, env, list);
   if (args->car->type != TCELL || args->cdr != Nil)
-    error("Malformed car: %s", pr_str(args));
+    error("Malformed car: %s", pr_str(root, args));
   return args->car->car;
 }
 
@@ -1676,6 +1831,15 @@ static void define_primitives(void *root, Val **env) {
   add_primitive(root, env, "macro", prim_macro);
   add_primitive(root, env, "macro-expand", prim_macro_expand);
 
+  // Object
+  add_primitive(root, env, "obj", prim_obj);
+  add_primitive(root, env, ":", prim_obj_get);
+  add_primitive(root, env, "obj-get", prim_obj_get);
+  add_primitive(root, env, "obj-set", prim_obj_set);
+  add_primitive(root, env, "obj-del", prim_obj_del);
+  add_primitive(root, env, "obj-proto", prim_obj_proto);
+  add_primitive(root, env, "obj-proto-set!", prim_obj_proto_set);
+
   // Math
   add_primitive(root, env, "+", prim_plus);
   add_primitive(root, env, "-", prim_minus);
@@ -1819,7 +1983,7 @@ void setup_repl(void *root, Val **env) {
       linenoiseHistoryAdd(line);
       linenoiseHistorySave(hist_path);
       *val = eval_input(root, env, line);
-      print(*val);
+      print(root, *val);
       printf("\n");
     } else if (!strncmp(line, ",quit", 5)) {
       free(line);

@@ -40,6 +40,8 @@
   (eq? (type x) 'list))
 (defn sym? (x)
   (eq? (type x) 'sym))
+(defn obj? (x)
+  (eq? (type x) 'obj))
 (defn prim? (x)
   (eq? (type x) 'prim))
 (defn fn? (x)
@@ -338,6 +340,11 @@
 
 (defn alist-vals (al)
   (map (fn (kv) (second kv)) al))
+
+
+; Objects
+; ==========================
+
 
 ; Collections
 ; ==========================

@@ -2,6 +2,17 @@
 
 ## TODO
 
+### Big projects
+
+- Async I/O
+- Async Net/Socket
+- Event Loop
+- Object system
+- Module System
+- Error trowing / catching
+
+### Other
+
 - prim: str-part
 - prim: read-sexp
 - http static files
