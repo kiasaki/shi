@@ -45,19 +45,16 @@ enum {
   TSTR,
   TCELL,
   TSYM,
+  TOBJ,
   TPRI,
   TFUN,
   TMAC,
   TENV,
-  // The marker that indicates the object has been moved to other location by
-  // GC. The new location
-  // can be found at the forwarding pointer. Only the functions to do garbage
-  // collection set and
-  // handle the object of this type. Other functions will never see the object
-  // of this type.
+
+  // Intermediary object only present during GC, points to obj in new semispace.
   TMOVED,
-  // Const objects. They are statically allocated and will never be managed by
-  // GC.
+
+  // Const objects. They are statically allocated and will never be managed by GC.
   TTRUE,
   TNIL,
   TDOT,
@@ -65,11 +62,11 @@ enum {
 };
 
 // Typedef for the primitive function
-struct Obj;
-typedef struct Obj *Primitive(void *root, struct Obj **env, struct Obj **args);
+struct Val;
+typedef struct Val *Primitive(void *root, struct Val **env, struct Val **args);
 
 // The object type
-typedef struct Obj {
+typedef struct Val {
   // The first word of the object represents the type of the object. Any code
   // that handles object
   // needs to check its type first, then access the following union members.
@@ -80,7 +77,7 @@ typedef struct Obj {
   // padding at the end of the object.
   int size;
 
-  // Object values.
+  // Valect values.
   union {
     // Int
     int intv;
@@ -88,45 +85,49 @@ typedef struct Obj {
     char strv[1];
     // Cell
     struct {
-      struct Obj *car;
-      struct Obj *cdr;
+      struct Val *car;
+      struct Val *cdr;
     };
     // Symbol
     char symv[1];
-    // Reference
-    struct Obj *refv;
+    // Valect
+    // Linked list of association lists containing object properties.
+    struct {
+      struct Val *props;
+      struct Val *proto;
+    };
     // Primitive
     Primitive *priv;
     // Function or Macro
     struct {
-      struct Obj *params;
-      struct Obj *body;
-      struct Obj *env;
+      struct Val *params;
+      struct Val *body;
+      struct Val *env;
     };
-    // Environment frame. This is a linked list of association lists
-    // containing the mapping from symbols to their value.
+    // Environment frame
+    // Linked list of association lists containing the mapping from symbols to their value.
     struct {
-      struct Obj *vars;
-      struct Obj *up;
+      struct Val *vars;
+      struct Val *up;
     };
     // Forwarding pointer
     void *moved;
   };
-} Obj;
+} Val;
 
 // Globals
 FILE *current_file;
 
 // Constants
-static Obj *True = &(Obj){TTRUE, 0, {0}};
-static Obj *Nil = &(Obj){TNIL, 0, {0}};
-static Obj *Dot = &(Obj){TDOT, 0, {0}};
-static Obj *Cparen = &(Obj){TCPAREN, 0, {0}};
+static Val *True = &(Val){TTRUE, 0, {0}};
+static Val *Nil = &(Val){TNIL, 0, {0}};
+static Val *Dot = &(Val){TDOT, 0, {0}};
+static Val *Cparen = &(Val){TCPAREN, 0, {0}};
 
 // The list containing all symbols. Such data structure is traditionally called
 // the "obarray", but I
 // avoid using it as a variable name as this is not an array but a list.
-static Obj *Symbols;
+static Val *Symbols;
 
 // }}}
 
@@ -192,25 +193,25 @@ static void gc(void *root);
 
 #define DEFINE1(root, var1)                                                    \
   ADD_ROOT(root, 1);                                                           \
-  Obj **var1 = (Obj **)(root_ADD_ROOT_ + 1)
+  Val **var1 = (Val **)(root_ADD_ROOT_ + 1)
 
 #define DEFINE2(root, var1, var2)                                              \
   ADD_ROOT(root, 2);                                                           \
-  Obj **var1 = (Obj **)(root_ADD_ROOT_ + 1);                                   \
-  Obj **var2 = (Obj **)(root_ADD_ROOT_ + 2)
+  Val **var1 = (Val **)(root_ADD_ROOT_ + 1);                                   \
+  Val **var2 = (Val **)(root_ADD_ROOT_ + 2)
 
 #define DEFINE3(root, var1, var2, var3)                                        \
   ADD_ROOT(root, 3);                                                           \
-  Obj **var1 = (Obj **)(root_ADD_ROOT_ + 1);                                   \
-  Obj **var2 = (Obj **)(root_ADD_ROOT_ + 2);                                   \
-  Obj **var3 = (Obj **)(root_ADD_ROOT_ + 3)
+  Val **var1 = (Val **)(root_ADD_ROOT_ + 1);                                   \
+  Val **var2 = (Val **)(root_ADD_ROOT_ + 2);                                   \
+  Val **var3 = (Val **)(root_ADD_ROOT_ + 3)
 
 #define DEFINE4(root, var1, var2, var3, var4)                                  \
   ADD_ROOT(root, 4);                                                           \
-  Obj **var1 = (Obj **)(root_ADD_ROOT_ + 1);                                   \
-  Obj **var2 = (Obj **)(root_ADD_ROOT_ + 2);                                   \
-  Obj **var3 = (Obj **)(root_ADD_ROOT_ + 3);                                   \
-  Obj **var4 = (Obj **)(root_ADD_ROOT_ + 4)
+  Val **var1 = (Val **)(root_ADD_ROOT_ + 1);                                   \
+  Val **var2 = (Val **)(root_ADD_ROOT_ + 2);                                   \
+  Val **var3 = (Val **)(root_ADD_ROOT_ + 3);                                   \
+  Val **var4 = (Val **)(root_ADD_ROOT_ + 4)
 
 // Round up the given value to a multiple of size. Size must be a power of 2. It
 // adds size - 1
@@ -223,13 +224,13 @@ static inline size_t roundup(size_t var, size_t size) {
 }
 
 // Allocates memory block. This may start GC if we don't have enough memory.
-static Obj *alloc(void *root, int type, size_t size) {
+static Val *alloc(void *root, int type, size_t size) {
   // The object must be large enough to contain a pointer for the forwarding
   // pointer. Make it larger if it's smaller than that.
   size = roundup(size, sizeof(void *));
 
   // Add the size of the type tag and size fields.
-  size += offsetof(Obj, intv);
+  size += offsetof(Val, intv);
 
   // Round up the object size to the nearest alignment boundary, so that the
   // next object will be allocated at the proper alignment boundary. Currently
@@ -256,7 +257,7 @@ static Obj *alloc(void *root, int type, size_t size) {
     error("Memory exhausted");
 
   // Allocate the object.
-  Obj *obj = memory + mem_nused;
+  Val *obj = memory + mem_nused;
   obj->type = type;
   obj->size = size;
   mem_nused += size;
@@ -276,13 +277,13 @@ static Obj *alloc(void *root, int type, size_t size) {
 // "scan1" and "scan2" have already been copied, but may contain pointers to the
 // from-space. "scan2"
 // points to the beginning of the free space.
-static Obj *scan1;
-static Obj *scan2;
+static Val *scan1;
+static Val *scan2;
 
 // Moves one object from the from-space to the to-space. Returns the object's
 // new address. If the
 // object has already been moved, does nothing but just returns the new address.
-static inline Obj *forward(Obj *obj) {
+static inline Val *forward(Val *obj) {
   // If the object's address is not in the from-space, the object is not managed
   // by GC nor it
   // has already been moved to the to-space.
@@ -297,9 +298,9 @@ static inline Obj *forward(Obj *obj) {
     return obj->moved;
 
   // Otherwise, the object has not been moved yet. Move it.
-  Obj *newloc = scan2;
+  Val *newloc = scan2;
   memcpy(newloc, obj, obj->size);
-  scan2 = (Obj *)((uint8_t *)scan2 + obj->size);
+  scan2 = (Val *)((uint8_t *)scan2 + obj->size);
 
   // Put a tombstone at the location where the object used to occupy, so that
   // the following call
@@ -316,7 +317,7 @@ static void *alloc_semispace() {
   return malloc(MEMORY_SIZE);
 }
 
-static char *pr_str(Obj *);
+static char *pr_str(Val *);
 
 // Copies the root objects.
 static void forward_root_objects(void *root) {
@@ -378,7 +379,7 @@ static void gc(void *root) {
     default:
       error("Bug: copy: unknown type %d", scan1->type);
     }
-    scan1 = (Obj *)((uint8_t *)scan1 + scan1->size);
+    scan1 = (Val *)((uint8_t *)scan1 + scan1->size);
   }
 
   // Finish up GC.
@@ -396,56 +397,56 @@ static void gc(void *root) {
 
 // {{{ constructors
 
-static Obj *make_int(void *root, int value) {
-  Obj *r = alloc(root, TINT, sizeof(int));
+static Val *make_int(void *root, int value) {
+  Val *r = alloc(root, TINT, sizeof(int));
   r->intv = value;
   return r;
 }
 
-static Obj *make_string(void *root, char *value) {
-  Obj *str = alloc(root, TSTR, strlen(value) + 1);
+static Val *make_string(void *root, char *value) {
+  Val *str = alloc(root, TSTR, strlen(value) + 1);
   strcpy(str->strv, value);
   return str;
 }
 
-static Obj *cons(void *root, Obj **car, Obj **cdr) {
-  Obj *cell = alloc(root, TCELL, sizeof(Obj *) * 2);
+static Val *cons(void *root, Val **car, Val **cdr) {
+  Val *cell = alloc(root, TCELL, sizeof(Val *) * 2);
   cell->car = *car;
   cell->cdr = *cdr;
   return cell;
 }
 
-static Obj *make_symbol(void *root, char *name) {
-  Obj *sym = alloc(root, TSYM, strlen(name) + 1);
+static Val *make_symbol(void *root, char *name) {
+  Val *sym = alloc(root, TSYM, strlen(name) + 1);
   strcpy(sym->symv, name);
   return sym;
 }
 
-static Obj *make_primitive(void *root, Primitive *fn) {
-  Obj *r = alloc(root, TPRI, sizeof(Primitive *));
+static Val *make_primitive(void *root, Primitive *fn) {
+  Val *r = alloc(root, TPRI, sizeof(Primitive *));
   r->priv = fn;
   return r;
 }
 
-static Obj *make_function(void *root, Obj **env, int type, Obj **params,
-                          Obj **body) {
+static Val *make_function(void *root, Val **env, int type, Val **params,
+                          Val **body) {
   assert(type == TFUN || type == TMAC);
-  Obj *r = alloc(root, type, sizeof(Obj *) * 3);
+  Val *r = alloc(root, type, sizeof(Val *) * 3);
   r->params = *params;
   r->body = *body;
   r->env = *env;
   return r;
 }
 
-struct Obj *make_env(void *root, Obj **vars, Obj **up) {
-  Obj *r = alloc(root, TENV, sizeof(Obj *) * 2);
+struct Val *make_env(void *root, Val **vars, Val **up) {
+  Val *r = alloc(root, TENV, sizeof(Val *) * 2);
   r->vars = *vars;
   r->up = *up;
   return r;
 }
 
 // Returns ((x . y) . a)
-static Obj *acons(void *root, Obj **x, Obj **y, Obj **a) {
+static Val *acons(void *root, Val **x, Val **y, Val **a) {
   DEFINE1(root, cell);
   *cell = cons(root, x, y);
   return cons(root, cell, a);
@@ -491,7 +492,7 @@ static int unescape(char *dest, char *src) {
   return i;
 }
 
-static char *pr_str(Obj *obj) {
+static char *pr_str(Val *obj) {
   char *buf = malloc(sizeof(char) * 2048);
   char *s;
   int len = 0;
@@ -549,14 +550,14 @@ static char *pr_str(Obj *obj) {
 }
 
 // Prints the given object.
-static void print(Obj *obj) {
+static void print(Val *obj) {
   char *str = pr_str(obj);
   printf("%s", str);
   free(str);
 }
 
 // Returns the length of the given list. -1 if it's not a proper list.
-static int length(Obj *list) {
+static int length(Val *list) {
   int len = 0;
   for (; list->type == TCELL; list = list->cdr)
     len++;
@@ -564,10 +565,10 @@ static int length(Obj *list) {
 }
 
 // Destructively reverses the given list.
-static Obj *reverse(Obj *p) {
-  Obj *ret = Nil;
+static Val *reverse(Val *p) {
+  Val *ret = Nil;
   while (p != Nil) {
-    Obj *head = p;
+    Val *head = p;
     p = p->cdr;
     head->cdr = ret;
     ret = head;
@@ -577,8 +578,8 @@ static Obj *reverse(Obj *p) {
 
 // May create a new symbol. If there's a symbol with the same name, it will not
 // create a new symbol but return the existing one.
-static Obj *intern(void *root, char *name) {
-  for (Obj *p = Symbols; p != Nil; p = p->cdr)
+static Val *intern(void *root, char *name) {
+  for (Val *p = Symbols; p != Nil; p = p->cdr)
     if (strcmp(name, p->car->symv) == 0)
       return p->car;
   DEFINE1(root, sym);
@@ -609,7 +610,7 @@ typedef struct Reader {
   char *input;
 } Reader;
 
-static Obj *reader_expr(Reader *r, void *root);
+static Val *reader_expr(Reader *r, void *root);
 
 static Reader *reader_new(char *input) {
   Reader *r = malloc(sizeof(Reader));
@@ -657,7 +658,7 @@ static void reader_skip_line(Reader *r) {
 }
 
 // Reads a list. Note that '(' has already been read.
-static Obj *reader_list(Reader *r, void *root) {
+static Val *reader_list(Reader *r, void *root) {
   DEFINE3(root, obj, head, last);
   *head = Nil;
   for (;;) {
@@ -670,7 +671,7 @@ static Obj *reader_list(Reader *r, void *root) {
       *last = reader_expr(r, root);
       if (reader_expr(r, root) != Cparen)
         error("Closed parenthesis expected after dot");
-      Obj *ret = reverse(*head);
+      Val *ret = reverse(*head);
       (*head)->cdr = *last;
       return ret;
     }
@@ -679,7 +680,7 @@ static Obj *reader_list(Reader *r, void *root) {
 }
 
 // 'def -> (quote def)
-static Obj *read_quote(Reader *r, void *root) {
+static Val *read_quote(Reader *r, void *root) {
   DEFINE2(root, sym, tmp);
   *sym = intern(root, "quote");
   *tmp = reader_expr(r, root);
@@ -689,7 +690,7 @@ static Obj *read_quote(Reader *r, void *root) {
 }
 
 // `(list a) -> (quasiquote (list a))
-static Obj *read_quasiquote(Reader *r, void *root) {
+static Val *read_quasiquote(Reader *r, void *root) {
   DEFINE2(root, sym, tmp);
   *sym = intern(root, "quasiquote");
   *tmp = reader_expr(r, root);
@@ -699,7 +700,7 @@ static Obj *read_quasiquote(Reader *r, void *root) {
 }
 
 // @b -> (unbox b)
-static Obj *read_unbox(Reader *r, void *root) {
+static Val *read_unbox(Reader *r, void *root) {
   DEFINE2(root, sym, tmp);
   *sym = intern(root, "unbox");
   *tmp = reader_expr(r, root);
@@ -708,7 +709,7 @@ static Obj *read_unbox(Reader *r, void *root) {
   return *tmp;
 }
 
-static Obj *read_unquote(Reader *r, void *root) {
+static Val *read_unquote(Reader *r, void *root) {
   DEFINE2(root, sym, tmp);
   if (reader_peek(r) == '@') {
     reader_next(r);
@@ -729,7 +730,7 @@ static int read_number(Reader *r, int val) {
   return val;
 }
 
-static Obj *read_string(Reader *r, void *root) {
+static Val *read_string(Reader *r, void *root) {
   char buf[STRING_MAX_LEN + 1];
   int len = 0;
   while (reader_peek(r) != '"' || buf[len - 1] == '\\') {
@@ -770,7 +771,7 @@ static Obj *read_string(Reader *r, void *root) {
   return *tmp;
 }
 
-static Obj *read_symbol(Reader *r, void *root, char c) {
+static Val *read_symbol(Reader *r, void *root, char c) {
   char buf[SYMBOL_MAX_LEN + 1];
   buf[0] = c;
   int len = 1;
@@ -784,7 +785,7 @@ static Obj *read_symbol(Reader *r, void *root, char c) {
   return intern(root, buf);
 }
 
-static Obj *reader_expr(Reader *r, void *root) {
+static Val *reader_expr(Reader *r, void *root) {
   for (;;) {
     int c = reader_next(r);
     if (c == ' ' || c == '\n' || c == '\r' || c == '\t')
@@ -825,9 +826,9 @@ static Obj *reader_expr(Reader *r, void *root) {
 
 // {{{ eval
 
-static Obj *eval(void *root, Obj **env, Obj **obj);
+static Val *eval(void *root, Val **env, Val **obj);
 
-static void add_variable(void *root, Obj **env, Obj **sym, Obj **val) {
+static void add_variable(void *root, Val **env, Val **sym, Val **val) {
   DEFINE2(root, vars, tmp);
   *vars = (*env)->vars;
   *tmp = acons(root, sym, val, vars);
@@ -835,7 +836,7 @@ static void add_variable(void *root, Obj **env, Obj **sym, Obj **val) {
 }
 
 // Returns a newly created environment frame.
-static Obj *push_env(void *root, Obj **env, Obj **vars, Obj **vals) {
+static Val *push_env(void *root, Val **env, Val **vars, Val **vals) {
   DEFINE3(root, map, sym, val);
   *map = Nil;
   if ((*vars)->type == TSYM) {
@@ -857,7 +858,7 @@ static Obj *push_env(void *root, Obj **env, Obj **vars, Obj **vals) {
 }
 
 // Evaluates the list elements from head and returns the last return value.
-static Obj *progn(void *root, Obj **env, Obj **list) {
+static Val *progn(void *root, Val **env, Val **list) {
   DEFINE2(root, lp, r);
   *r = Nil;
   for (*lp = *list; *lp != Nil; *lp = (*lp)->cdr) {
@@ -869,7 +870,7 @@ static Obj *progn(void *root, Obj **env, Obj **list) {
 
 // Evaluates all the list elements and returns their return values as a new
 // list.
-static Obj *eval_list(void *root, Obj **env, Obj **list) {
+static Val *eval_list(void *root, Val **env, Val **list) {
   DEFINE4(root, head, lp, expr, result);
   *head = Nil;
   for (lp = list; *lp != Nil; *lp = (*lp)->cdr) {
@@ -880,9 +881,9 @@ static Obj *eval_list(void *root, Obj **env, Obj **list) {
   return reverse(*head);
 }
 
-static bool is_list(Obj *obj) { return obj == Nil || obj->type == TCELL; }
+static bool is_list(Val *obj) { return obj == Nil || obj->type == TCELL; }
 
-static Obj *apply_func(void *root, Obj **env, Obj **fn, Obj **args) {
+static Val *apply_func(void *root, Val **env, Val **fn, Val **args) {
   (void)env;
   DEFINE3(root, params, newenv, body);
   *params = (*fn)->params;
@@ -893,7 +894,7 @@ static Obj *apply_func(void *root, Obj **env, Obj **fn, Obj **args) {
 }
 
 // Apply fn with args.
-static Obj *apply(void *root, Obj **env, Obj **fn, Obj **args, bool do_eval) {
+static Val *apply(void *root, Val **env, Val **fn, Val **args, bool do_eval) {
   if (!is_list(*args)) {
     error("apply: argument must be a list");
   }
@@ -912,10 +913,10 @@ static Obj *apply(void *root, Obj **env, Obj **fn, Obj **args, bool do_eval) {
 }
 
 // Searches for a variable by symbol. Returns null if not found.
-static Obj *find(Obj **env, Obj *sym) {
-  for (Obj *p = *env; p != Nil; p = p->up) {
-    for (Obj *cell = p->vars; cell != Nil; cell = cell->cdr) {
-      Obj *bind = cell->car;
+static Val *find(Val **env, Val *sym) {
+  for (Val *p = *env; p != Nil; p = p->up) {
+    for (Val *cell = p->vars; cell != Nil; cell = cell->cdr) {
+      Val *bind = cell->car;
       if (sym == bind->car)
         return bind;
     }
@@ -924,7 +925,7 @@ static Obj *find(Obj **env, Obj *sym) {
 }
 
 // Expands the given macro application form.
-static Obj *macroexpand(void *root, Obj **env, Obj **obj) {
+static Val *macroexpand(void *root, Val **env, Val **obj) {
   if ((*obj)->type != TCELL ||
       ((*obj)->car->type != TSYM && (*obj)->car->type != TMAC)) {
     return *obj;
@@ -943,7 +944,7 @@ static Obj *macroexpand(void *root, Obj **env, Obj **obj) {
 }
 
 // Evaluates the S expression.
-static Obj *eval(void *root, Obj **env, Obj **obj) {
+static Val *eval(void *root, Val **env, Val **obj) {
   switch ((*obj)->type) {
   case TINT:
   case TSTR:
@@ -956,7 +957,7 @@ static Obj *eval(void *root, Obj **env, Obj **obj) {
     return *obj;
   case TSYM: {
     // Variable
-    Obj *bind = find(env, *obj);
+    Val *bind = find(env, *obj);
     if (!bind) {
       error("eval: undefined symbol: %s", (*obj)->symv);
     }
@@ -988,12 +989,12 @@ static Obj *eval(void *root, Obj **env, Obj **obj) {
 // {{{ primitives: language
 
 // (do body ...)
-static Obj *prim_do(void *root, Obj **env, Obj **list) {
+static Val *prim_do(void *root, Val **env, Val **list) {
   return progn(root, env, list);
 }
 
 // (while cond expr ...)
-static Obj *prim_while(void *root, Obj **env, Obj **list) {
+static Val *prim_while(void *root, Val **env, Val **list) {
   if (length(*list) < 2)
     error("Malformed while");
   DEFINE2(root, cond, exprs);
@@ -1005,7 +1006,7 @@ static Obj *prim_while(void *root, Obj **env, Obj **list) {
   return Nil;
 }
 
-static Obj *handle_function(void *root, Obj **env, Obj **list, int type) {
+static Val *handle_function(void *root, Val **env, Val **list, int type) {
   if ((*list)->type != TCELL ||
       !(is_list((*list)->car) || (*list)->car->type == TSYM) ||
       (*list)->cdr->type != TCELL)
@@ -1014,7 +1015,7 @@ static Obj *handle_function(void *root, Obj **env, Obj **list, int type) {
   DEFINE2(root, params, body);
   *params = (*list)->car;
   *body = (*list)->cdr;
-  Obj *p = *params;
+  Val *p = *params;
 
   // validate (arg0 arg1) or (arg0 . argN) forms
   if (p->type != TSYM) { // but allow a single symbol to be params
@@ -1029,17 +1030,17 @@ static Obj *handle_function(void *root, Obj **env, Obj **list, int type) {
 }
 
 // (fn (<symbol> ...) expr ...)
-static Obj *prim_fn(void *root, Obj **env, Obj **list) {
+static Val *prim_fn(void *root, Val **env, Val **list) {
   return handle_function(root, env, list, TFUN);
 }
 
 // (macro (<symbol> ...) expr ...)
-static Obj *prim_macro(void *root, Obj **env, Obj **list) {
+static Val *prim_macro(void *root, Val **env, Val **list) {
   return handle_function(root, env, list, TMAC);
 }
 
 // (def <symbol> expr)
-static Obj *prim_def(void *root, Obj **env, Obj **list) {
+static Val *prim_def(void *root, Val **env, Val **list) {
   if (length(*list) != 2 || (*list)->car->type != TSYM)
     error("Malformed def");
   DEFINE2(root, sym, value);
@@ -1051,7 +1052,7 @@ static Obj *prim_def(void *root, Obj **env, Obj **list) {
 }
 
 // (set <symbol> expr)
-static Obj *prim_set(void *root, Obj **env, Obj **list) {
+static Val *prim_set(void *root, Val **env, Val **list) {
   if (length(*list) != 2 || (*list)->car->type != TSYM)
     error("Malformed set");
   DEFINE2(root, bind, value);
@@ -1065,7 +1066,7 @@ static Obj *prim_set(void *root, Obj **env, Obj **list) {
 }
 
 // (pr-str expr)
-static Obj *prim_pr_str(void *root, Obj **env, Obj **list) {
+static Val *prim_pr_str(void *root, Val **env, Val **list) {
   DEFINE2(root, tmp, s);
   *tmp = (*list)->car;
   char *str = pr_str(eval(root, env, tmp));
@@ -1074,7 +1075,7 @@ static Obj *prim_pr_str(void *root, Obj **env, Obj **list) {
 }
 
 // (if expr expr expr ...)
-static Obj *prim_if(void *root, Obj **env, Obj **list) {
+static Val *prim_if(void *root, Val **env, Val **list) {
   if (length(*list) < 2)
     error("Malformed if");
   DEFINE3(root, cond, then, els);
@@ -1100,15 +1101,15 @@ static Obj *prim_if(void *root, Obj **env, Obj **list) {
 }
 
 // (eq? expr expr)
-static Obj *prim_eq(void *root, Obj **env, Obj **list) {
+static Val *prim_eq(void *root, Val **env, Val **list) {
   if (length(*list) != 2)
     error("eq?: needs exactly 2 arguments");
-  Obj *values = eval_list(root, env, list);
+  Val *values = eval_list(root, env, list);
   return values->car == values->cdr->car ? True : Nil;
 }
 
 // (eval expr)
-static Obj *prim_eval(void *root, Obj **env, Obj **list) {
+static Val *prim_eval(void *root, Val **env, Val **list) {
   if (length(*list) != 1)
     error("Malformed eval");
   DEFINE1(root, arg);
@@ -1118,7 +1119,7 @@ static Obj *prim_eval(void *root, Obj **env, Obj **list) {
 }
 
 // (apply fn args)
-static Obj *prim_apply(void *root, Obj **env, Obj **list) {
+static Val *prim_apply(void *root, Val **env, Val **list) {
   if (length(*list) != 2)
     error("apply: not given exactly 2 args");
   DEFINE2(root, fn, args);
@@ -1134,10 +1135,10 @@ static Obj *prim_apply(void *root, Obj **env, Obj **list) {
 }
 
 // (type expr)
-static Obj *prim_type(void *root, Obj **env, Obj **list) {
+static Val *prim_type(void *root, Val **env, Val **list) {
   if (length(*list) != 1)
     error("Malformed type");
-  Obj *values = eval_list(root, env, list);
+  Val *values = eval_list(root, env, list);
 
   char *name;
 
@@ -1187,7 +1188,7 @@ static Obj *prim_type(void *root, Obj **env, Obj **list) {
 // {{{ primitives: marco
 
 // (quote expr)
-static Obj *prim_quote(void *root, Obj **env, Obj **list) {
+static Val *prim_quote(void *root, Val **env, Val **list) {
   (void)root;
   (void)env;
   if (length(*list) != 1)
@@ -1196,7 +1197,7 @@ static Obj *prim_quote(void *root, Obj **env, Obj **list) {
 }
 
 // (macro-expand expr)
-static Obj *prim_macro_expand(void *root, Obj **env, Obj **list) {
+static Val *prim_macro_expand(void *root, Val **env, Val **list) {
   if (length(*list) != 1)
     error("Malformed macro-expand");
   DEFINE1(root, body);
@@ -1205,7 +1206,7 @@ static Obj *prim_macro_expand(void *root, Obj **env, Obj **list) {
 }
 
 // (gensym)
-static Obj *prim_gensym(void *root, Obj **env, Obj **list) {
+static Val *prim_gensym(void *root, Val **env, Val **list) {
   (void)env;
   (void)list;
   static int count = 0;
@@ -1219,32 +1220,32 @@ static Obj *prim_gensym(void *root, Obj **env, Obj **list) {
 // {{{ primitives: list
 
 // (cons expr expr)
-static Obj *prim_cons(void *root, Obj **env, Obj **list) {
+static Val *prim_cons(void *root, Val **env, Val **list) {
   if (length(*list) != 2)
     error("Malformed cons");
-  Obj *cell = eval_list(root, env, list);
+  Val *cell = eval_list(root, env, list);
   cell->cdr = cell->cdr->car;
   return cell;
 }
 
 // (car <cell>)
-static Obj *prim_car(void *root, Obj **env, Obj **list) {
-  Obj *args = eval_list(root, env, list);
+static Val *prim_car(void *root, Val **env, Val **list) {
+  Val *args = eval_list(root, env, list);
   if (args->car->type != TCELL || args->cdr != Nil)
     error("Malformed car: %s", pr_str(args));
   return args->car->car;
 }
 
 // (cdr <cell>)
-static Obj *prim_cdr(void *root, Obj **env, Obj **list) {
-  Obj *args = eval_list(root, env, list);
+static Val *prim_cdr(void *root, Val **env, Val **list) {
+  Val *args = eval_list(root, env, list);
   if (args->car->type != TCELL || args->cdr != Nil)
     error("Malformed cdr");
   return args->car->cdr;
 }
 
 // (set-car! <cell> expr)
-static Obj *prim_set_car(void *root, Obj **env, Obj **list) {
+static Val *prim_set_car(void *root, Val **env, Val **list) {
   DEFINE1(root, args);
   *args = eval_list(root, env, list);
   if (length(*args) != 2 || (*args)->car->type != TCELL)
@@ -1258,11 +1259,11 @@ static Obj *prim_set_car(void *root, Obj **env, Obj **list) {
 // {{{ primitives: string
 
 // (str str0 str1 str3)
-static Obj *prim_str(void *root, Obj **env, Obj **list) {
+static Val *prim_str(void *root, Val **env, Val **list) {
   // Ensure we are only dealing with strings and compute final length
   int len = 0;
-  Obj *args = eval_list(root, env, list);
-  for (Obj *a = args; a != Nil; a = a->cdr) {
+  Val *args = eval_list(root, env, list);
+  for (Val *a = args; a != Nil; a = a->cdr) {
     if (a->car->type != TSTR)
       error("str: argument not a string");
     len += strlen(a->car->strv);
@@ -1272,7 +1273,7 @@ static Obj *prim_str(void *root, Obj **env, Obj **list) {
   char *last = &ret[0];
 
   // Append strings to return value
-  for (Obj *a = args; a != Nil; a = a->cdr) {
+  for (Val *a = args; a != Nil; a = a->cdr) {
     last = stpcpy(last, a->car->strv);
   }
 
@@ -1281,7 +1282,7 @@ static Obj *prim_str(void *root, Obj **env, Obj **list) {
 }
 
 // (str-len str)
-static Obj *prim_str_len(void *root, Obj **env, Obj **list) {
+static Val *prim_str_len(void *root, Val **env, Val **list) {
   DEFINE1(root, args);
   *args = eval_list(root, env, list);
   if (length(*args) != 1 || (*args)->car->type != TSTR) {
@@ -1296,9 +1297,9 @@ static Obj *prim_str_len(void *root, Obj **env, Obj **list) {
 // {{{ primitives: math
 
 // (+ <integer> ...)
-static Obj *prim_plus(void *root, Obj **env, Obj **list) {
+static Val *prim_plus(void *root, Val **env, Val **list) {
   int sum = 0;
-  for (Obj *args = eval_list(root, env, list); args != Nil; args = args->cdr) {
+  for (Val *args = eval_list(root, env, list); args != Nil; args = args->cdr) {
     if (args->car->type != TINT)
       error("+ takes only numbers");
     sum += args->car->intv;
@@ -1307,49 +1308,49 @@ static Obj *prim_plus(void *root, Obj **env, Obj **list) {
 }
 
 // (- <integer> ...)
-static Obj *prim_minus(void *root, Obj **env, Obj **list) {
-  Obj *args = eval_list(root, env, list);
-  for (Obj *p = args; p != Nil; p = p->cdr)
+static Val *prim_minus(void *root, Val **env, Val **list) {
+  Val *args = eval_list(root, env, list);
+  for (Val *p = args; p != Nil; p = p->cdr)
     if (p->car->type != TINT)
       error("- takes only numbers");
   if (args->cdr == Nil)
     return make_int(root, -args->car->intv);
   int r = args->car->intv;
-  for (Obj *p = args->cdr; p != Nil; p = p->cdr)
+  for (Val *p = args->cdr; p != Nil; p = p->cdr)
     r -= p->car->intv;
   return make_int(root, r);
 }
 
 // (< <integer> <integer>)
-static Obj *prim_lt(void *root, Obj **env, Obj **list) {
-  Obj *args = eval_list(root, env, list);
+static Val *prim_lt(void *root, Val **env, Val **list) {
+  Val *args = eval_list(root, env, list);
   if (length(args) != 2)
     error("malformed <");
-  Obj *x = args->car;
-  Obj *y = args->cdr->car;
+  Val *x = args->car;
+  Val *y = args->cdr->car;
   if (x->type != TINT || y->type != TINT)
     error("< takes only numbers");
   return x->intv < y->intv ? True : Nil;
 }
 
 // (= <integer> <integer>)
-static Obj *prim_num_eq(void *root, Obj **env, Obj **list) {
+static Val *prim_num_eq(void *root, Val **env, Val **list) {
   if (length(*list) != 2)
     error("Malformed =");
-  Obj *values = eval_list(root, env, list);
-  Obj *x = values->car;
-  Obj *y = values->cdr->car;
+  Val *values = eval_list(root, env, list);
+  Val *x = values->car;
+  Val *y = values->cdr->car;
   if (x->type != TINT || y->type != TINT)
     error("= only takes numbers");
   return x->intv == y->intv ? True : Nil;
 }
 
 // (rand <integer>)
-static Obj *prim_rand(void *root, Obj **env, Obj **list) {
+static Val *prim_rand(void *root, Val **env, Val **list) {
   if (length(*list) != 1)
     error("rand: takes exactly 1 argument");
-  Obj *values = eval_list(root, env, list);
-  Obj *x = values->car;
+  Val *values = eval_list(root, env, list);
+  Val *x = values->car;
   if (x->type != TINT)
     error("rand: 1st arg is not an int");
 
@@ -1361,11 +1362,11 @@ static Obj *prim_rand(void *root, Obj **env, Obj **list) {
 // {{{ primitives: os
 
 // (write "str")
-static Obj *prim_write(void *root, Obj **env, Obj **list) {
+static Val *prim_write(void *root, Val **env, Val **list) {
   if (length(*list) != 2)
     error("write: not given exactly 2 args");
 
-  Obj *values = eval_list(root, env, list);
+  Val *values = eval_list(root, env, list);
 
   if (values->car->type != TINT)
     error("write: 1st arg not file descriptor");
@@ -1381,11 +1382,11 @@ static Obj *prim_write(void *root, Obj **env, Obj **list) {
 }
 
 // (read "str")
-static Obj *prim_read(void *root, Obj **env, Obj **list) {
+static Val *prim_read(void *root, Val **env, Val **list) {
   if (length(*list) != 2)
     error("read: not given exactly 2 args");
 
-  Obj *values = eval_list(root, env, list);
+  Val *values = eval_list(root, env, list);
 
   if (values->car->type != TINT)
     error("read: 1st arg not file descriptor");
@@ -1404,7 +1405,7 @@ static Obj *prim_read(void *root, Obj **env, Obj **list) {
 }
 
 // (seconds)
-static Obj *prim_seconds(void *root, Obj **env, Obj **list) {
+static Val *prim_seconds(void *root, Val **env, Val **list) {
   (void)env;
   if (length(*list) != 0)
     error("seconds: takes no args");
@@ -1414,10 +1415,10 @@ static Obj *prim_seconds(void *root, Obj **env, Obj **list) {
 }
 
 // (sleep n)
-static Obj *prim_sleep(void *root, Obj **env, Obj **list) {
+static Val *prim_sleep(void *root, Val **env, Val **list) {
   if (length(*list) != 1)
     error("sleep: not given exactly 1 args");
-  Obj *values = eval_list(root, env, list);
+  Val *values = eval_list(root, env, list);
   if (values->car->type != TINT)
     error("sleep: 1st arg not int");
 
@@ -1430,10 +1431,10 @@ static Obj *prim_sleep(void *root, Obj **env, Obj **list) {
 }
 
 // (exit code)
-static Obj *prim_exit(void *root, Obj **env, Obj **list) {
+static Val *prim_exit(void *root, Val **env, Val **list) {
   if (length(*list) != 1)
     error("exit: not given exactly 1 args");
-  Obj *values = eval_list(root, env, list);
+  Val *values = eval_list(root, env, list);
   if (values->car->type != TINT)
     error("exit: 1st arg not int");
 
@@ -1442,17 +1443,17 @@ static Obj *prim_exit(void *root, Obj **env, Obj **list) {
 }
 
 // (open path append-or-trunc) -> fd
-static Obj *prim_open(void *root, Obj **env, Obj **list) {
+static Val *prim_open(void *root, Val **env, Val **list) {
   if (length(*list) < 1)
     error("open: not given a path");
-  Obj *values = eval_list(root, env, list);
+  Val *values = eval_list(root, env, list);
   if (values->car->type != TSTR)
     error("open: 1st arg not string");
 
 
   // Check 2nd param (passed a mode to fopen(3))
   char *mode = "r";
-  Obj *rest = values->cdr;
+  Val *rest = values->cdr;
   if (rest != Nil && rest->car->type == TSTR) {
     mode = rest->car->strv;
   }
@@ -1465,10 +1466,10 @@ static Obj *prim_open(void *root, Obj **env, Obj **list) {
 }
 
 // (close fd)
-static Obj *prim_close(void *root, Obj **env, Obj **list) {
+static Val *prim_close(void *root, Val **env, Val **list) {
   if (length(*list) != 1)
     error("close: not given exactly 1 arg");
-  Obj *values = eval_list(root, env, list);
+  Val *values = eval_list(root, env, list);
   if (values->car->type != TINT)
     error("open: 1st arg not int");
 
@@ -1483,10 +1484,10 @@ static Obj *prim_close(void *root, Obj **env, Obj **list) {
 // {{{ primitives: net
 
 // (socket domain type protocol) -> fd
-static Obj *prim_socket(void *root, Obj **env, Obj **list) {
+static Val *prim_socket(void *root, Val **env, Val **list) {
   if (length(*list) != 3)
     error("socket: not given exactly 3 args");
-  Obj *values = eval_list(root, env, list);
+  Val *values = eval_list(root, env, list);
   if (values->car->type != TINT)
     error("socket: 1st arg not int");
   if (values->cdr->car->type != TINT)
@@ -1507,10 +1508,10 @@ static Obj *prim_socket(void *root, Obj **env, Obj **list) {
 }
 
 // (bind-inet socket-fd host port) -> fd
-static Obj *prim_bind_inet(void *root, Obj **env, Obj **list) {
+static Val *prim_bind_inet(void *root, Val **env, Val **list) {
   if (length(*list) != 3)
     error("bind-inet: not given exactly 3 args");
-  Obj *values = eval_list(root, env, list);
+  Val *values = eval_list(root, env, list);
   if (values->car->type != TINT)
     error("bind-inet: 1st arg not int");
   if (values->cdr->car->type != TSTR)
@@ -1536,10 +1537,10 @@ static Obj *prim_bind_inet(void *root, Obj **env, Obj **list) {
 }
 
 // (listen socket-fd backlog-size)
-static Obj *prim_listen(void *root, Obj **env, Obj **list) {
+static Val *prim_listen(void *root, Val **env, Val **list) {
   if (length(*list) != 2)
     error("listen: not given exactly 2 args");
-  Obj *values = eval_list(root, env, list);
+  Val *values = eval_list(root, env, list);
   if (values->car->type != TINT)
     error("listen: 1st arg not int");
   if (values->cdr->car->type != TINT)
@@ -1569,10 +1570,10 @@ static Obj *prim_listen(void *root, Obj **env, Obj **list) {
 }
 
 // (accept socket-fd)
-static Obj *prim_accept(void *root, Obj **env, Obj **list) {
+static Val *prim_accept(void *root, Val **env, Val **list) {
   if (length(*list) != 1)
     error("accept: not given exactly 1 args");
-  Obj *values = eval_list(root, env, list);
+  Val *values = eval_list(root, env, list);
   if (values->car->type != TINT)
     error("accept: 1st arg not int");
 
@@ -1609,44 +1610,44 @@ static Obj *prim_accept(void *root, Obj **env, Obj **list) {
 }
 // }}}
 
-static void add_primitive(void *root, Obj **env, char *name, Primitive *fn) {
+static void add_primitive(void *root, Val **env, char *name, Primitive *fn) {
   DEFINE2(root, sym, prim);
   *sym = intern(root, name);
   *prim = make_primitive(root, fn);
   add_variable(root, env, sym, prim);
 }
 
-static void define_constants(void *root, Obj **env) {
+static void define_constants(void *root, Val **env) {
   ADD_ROOT(root, 8);
 
-  Obj **tsym = (Obj **)(root_ADD_ROOT_ + 1);
+  Val **tsym = (Val **)(root_ADD_ROOT_ + 1);
   *tsym = intern(root, "t");
   add_variable(root, env, tsym, &True);
 
-  Obj **nsym = (Obj **)(root_ADD_ROOT_ + 2);
+  Val **nsym = (Val **)(root_ADD_ROOT_ + 2);
   *nsym = intern(root, "nil");
   add_variable(root, env, nsym, &Nil);
 
-  Obj **system_version = (Obj **)(root_ADD_ROOT_ + 3);
-  Obj **system_version_val = (Obj **)(root_ADD_ROOT_ + 4);
+  Val **system_version = (Val **)(root_ADD_ROOT_ + 3);
+  Val **system_version_val = (Val **)(root_ADD_ROOT_ + 4);
   *system_version = intern(root, "*system-version*");
   *system_version_val = make_string(root, (char *)VERSION);
   add_variable(root, env, system_version, system_version_val);
 
-  Obj **pf_inet = (Obj **)(root_ADD_ROOT_ + 5);
-  Obj **pf_inet_val = (Obj **)(root_ADD_ROOT_ + 6);
+  Val **pf_inet = (Val **)(root_ADD_ROOT_ + 5);
+  Val **pf_inet_val = (Val **)(root_ADD_ROOT_ + 6);
   *pf_inet = intern(root, "PF_INET");
   *pf_inet_val = make_int(root, PF_INET);
   add_variable(root, env, pf_inet, pf_inet_val);
 
-  Obj **sock_stream = (Obj **)(root_ADD_ROOT_ + 7);
-  Obj **sock_stream_val = (Obj **)(root_ADD_ROOT_ + 8);
+  Val **sock_stream = (Val **)(root_ADD_ROOT_ + 7);
+  Val **sock_stream_val = (Val **)(root_ADD_ROOT_ + 8);
   *sock_stream = intern(root, "SOCK_STREAM");
   *sock_stream_val = make_int(root, SOCK_STREAM);
   add_variable(root, env, sock_stream, sock_stream_val);
 }
 
-static void define_primitives(void *root, Obj **env) {
+static void define_primitives(void *root, Val **env) {
   // Lists
   add_primitive(root, env, "cons", prim_cons);
   add_primitive(root, env, "car", prim_car);
@@ -1764,7 +1765,7 @@ char *file_read_all(char *path) {
   return content;
 }
 
-Obj *eval_reader(Reader *r, void *root, Obj **env) {
+Val *eval_reader(Reader *r, void *root, Val **env) {
   DEFINE2(root, val, expr);
   *val = Nil;
 
@@ -1780,7 +1781,7 @@ Obj *eval_reader(Reader *r, void *root, Obj **env) {
   }
 }
 
-Obj *eval_input(void *root, Obj **env, char *input) {
+Val *eval_input(void *root, Val **env, char *input) {
   DEFINE1(root, val);
   Reader *r = reader_new(input);
   *val = eval_reader(r, root, env);
@@ -1807,7 +1808,7 @@ char *setup_repl_history() {
   return hist_path;
 }
 
-void setup_repl(void *root, Obj **env) {
+void setup_repl(void *root, Val **env) {
   DEFINE1(root, val);
   char *line;
   char *hist_path = setup_repl_history();
