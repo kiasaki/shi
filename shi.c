@@ -20,12 +20,14 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 
-#include "vendor/linenoise.h"
-#include "vendor/pcg_basic.h"
-
+#define EV_STANDALONE 1
 #ifndef SIGCHLD
 #define SIGCHLD SIGCLD
 #endif
+
+#include "vendor/linenoise.h"
+#include "vendor/pcg_basic.h"
+#include "vendor/libev/ev.h"
 
 static const char *VERSION = "0.1.0";
 
