@@ -1,14 +1,17 @@
+#!/usr/bin/env shi
+
 ; http
+(prn *args*)
 
 (def host "0.0.0.0")
 (def port 8000)
 
-(def srv (http:server host port))
+(def srv (http/server host port))
 
-(http:add srv 'GET "/" (fn (req res)
+(http/add srv 'GET "/" (fn (req res)
   (-> res
     (alist-set-in '(headers Content-Type) "text/html")
     (alist-set 'body (str "<h1>Hello</h1><p>World!</p>" (num->str (rand 100)))))))
 
 (println (str "server starting on port: " (pr-str port)))
-(http:listen srv)
+(http/listen srv)

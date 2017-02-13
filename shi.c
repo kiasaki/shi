@@ -860,7 +860,7 @@ static Val *reader_expr(Reader *r, void *root) {
       continue;
     if (c == EOF)
       return NULL;
-    if (c == ';') {
+    if (c == ';' || (r->pos == 0 && c == '#')) {
       reader_skip_line(r);
       continue;
     }
