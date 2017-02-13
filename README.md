@@ -7,7 +7,6 @@
 - Async I/O
 - Async Net/Socket
 - Event Loop
-- Object system
 - Module System
 - Error trowing / catching
 

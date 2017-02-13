@@ -19,6 +19,12 @@
   #sidebar a:hover {
     text-decoration: underline;
   }
+  code {
+    display: inline-block;
+    background: #eee;
+    padding: 0 3px;
+    border-radius: 3px;
+  }
 </style>
 
 <div class="center pa4 mw8">
@@ -239,30 +245,32 @@
       </p>
     </aside>
     <main class="fl w-75-ns w-100">
-      <h2>Language Reference</h2>
+      <h2 class="f2 fw3 mt3">Language Reference</h2>
 
-      <h3>Basics</h3>
+      <h3 class="f4 fw3 bb b--dark-pink dark-pink pb2">Basics</h3>
 
-      <article class="mb4">
+      <article class="mb4" id="d-def">
         <header>
           <span class="code b f3">def</span>
           <span>primitive</span>
         </header>
-        <div class="bg-near-white code gray pa3 mt3">
+        <div class="bg-near-white code mid-gray pa3 mt3">
           (def name value)
+          <span class="light-silver">; sym -&gt; any =&gt; any</span>
         </div>
         <p>
           Assigns <code>value</code> to the symbol <code>name</code> in the current environment.
         </p>
       </article>
 
-      <article class="mb4">
+      <article class="mb4" id="d-set">
         <header>
           <span class="code b f3">set</span>
           <span>primitive</span>
         </header>
-        <div class="bg-near-white code gray pa3 mt3">
+        <div class="bg-near-white code mid-gray pa3 mt3">
           (set name value)
+          <span class="light-silver">; sym -&gt; any =&gt; any</span>
         </div>
         <p>
           Assigns <code>value</code> to the symbol <code>name</code> in the environment where it
@@ -270,6 +278,225 @@
         </p>
       </article>
 
+      <article class="mb4" id="d-dfn">
+        <header>
+          <span class="code b f3">fn</span>
+          <span>primitive</span>
+        </header>
+        <div class="bg-near-white code mid-gray pa3 mt3">
+          (fn (arg1 ...) body ...) <span class="light-silver">; list|sym -&gt; any =&gt; fn</span><br />
+          (fn (arg . rest) body ...) <span class="light-silver">; list|sym -&gt; any =&gt; fn</span>
+        </div>
+        <p>
+          Creates a new function. The 1st argument is the list of arguments the function will take.
+          The body can be one or more expressions.
+          Shi functions capture the environment they are created in.
+        </p>
+        <p>
+          If given a dotted list as 1st argument, the last param will be bound to a list of the rest
+          arguments given when called.
+        </p>
+        <p>
+          If given a symbol as 1st argument, this symbol will be bound to the list of arguments
+          the function was given when called.
+        </p>
+      </article>
+
+      <article class="mb4" id="d-defn">
+        <header>
+          <span class="code b f3">defn</span>
+          <span>macro</span>
+        </header>
+        <div class="bg-near-white code mid-gray pa3 mt3">
+          (defn name (arg1 ...) body ...)
+          <span class="light-silver">; sym -&gt; list|sym -&gt; any* =&gt; fn</span>
+        </div>
+        <p>
+          A combination of <code>def</code> and <code>fn</code>. Creates a new function and assigns
+          it to <code>name</code>.
+        </p>
+      </article>
+
+      <article class="mb4" id="d-do">
+        <header>
+          <span class="code b f3">do</span>
+          <span>primitive</span>
+        </header>
+        <div class="bg-near-white code mid-gray pa3 mt3">
+          (do expr ...)
+          <span class="light-silver">; any* =&gt; any</span>
+        </div>
+        <p>
+          Take multiple expressions, evaluates them in order and returns the value of the last one.
+          When given no argument, return <code>nil</code>.
+        </p>
+      </article>
+
+      <article class="mb4" id="d-while">
+        <header>
+          <span class="code b f3">while</span>
+          <span>primitive</span>
+        </header>
+        <div class="bg-near-white code mid-gray pa3 mt3">
+          (while test body ...)
+          <span class="light-silver">; any -&gt; any* =&gt; any</span>
+        </div>
+        <p>
+          Evaluates <code>body</code> expressions until the <code>test</code> expression evaluates
+          to <code>nil</code>.
+        </p>
+        <p>
+          Shi does not implement tail-recursion, hence <code>while</code> and it's derived looping
+          functions are the only way not to blow the stack when looping over large collections.
+        </p>
+      </article>
+
+      <article class="mb4" id="d-apply">
+        <header>
+          <span class="code b f3">apply</span>
+          <span>primitive</span>
+        </header>
+        <div class="bg-near-white code mid-gray pa3 mt3">
+          (apply f args)
+          <span class="light-silver">; fn|macro|primitive -&gt; list =&gt; any</span>
+        </div>
+        <p>
+          Calls the function <code>f</code> with the argument list provided.
+        </p>
+      </article>
+
+      <article class="mb4" id="d-eval">
+        <header>
+          <span class="code b f3">eval</span>
+          <span>primitive</span>
+        </header>
+        <div class="bg-near-white code mid-gray pa3 mt3">
+          (eval expr)
+          <span class="light-silver">; any =&gt; any</span>
+        </div>
+        <p>
+          Evaluates the given expression in the current environment.
+        </p>
+      </article>
+
+
+      <h3 class="f4 fw3 bb b--dark-pink dark-pink pb2">Conditionals</h3>
+
+      <article class="mb4" id="d-if">
+        <header>
+          <span class="code b f3">if</span>
+          <span>primitive</span>
+        </header>
+        <div class="bg-near-white code mid-gray pa3 mt3">
+          (if test then)
+          <span class="light-silver">; any -&gt; any =&gt; any</span><br />
+          (if test then else)
+          <span class="light-silver">; any -&gt; any -&gt; any =&gt; any</span><br />
+          (if cond1 val1 cond2 val2 ...)
+          <span class="light-silver">; any* =&gt; any</span>
+        </div>
+        <p>
+          Basic conditional construct. Evaluates 1st argument, if non-<code>nil</code> returns
+          the 2nd argument evaluated. Else, it continues with subsequent test/value pairs.
+        </p>
+        <p>
+          If the number of arguments is un-even, the last argument is considered to be the default
+          value and will be returned when all previous tests fail.
+        </p>
+      </article>
+
+      <article class="mb4" id="d-cond">
+        <header>
+          <span class="code b f3">cond</span>
+          <span>primitive</span>
+        </header>
+        <div class="bg-near-white code mid-gray pa3 mt3">
+          (cond test then)
+          <span class="light-silver">; any -&gt; any =&gt; any</span><br />
+          (cond test then else)
+          <span class="light-silver">; any -&gt; any -&gt; any =&gt; any</span><br />
+          (cond cond1 val1 cond2 val2 ...)
+          <span class="light-silver">; any* =&gt; any</span>
+        </div>
+        <p>
+          <code>cond</code> is an alias for <code>if</code>.
+        </p>
+      </article>
+
+      <article class="mb4" id="d-not">
+        <header>
+          <span class="code b f3">not</span>
+          <span>function</span>
+        </header>
+        <div class="bg-near-white code mid-gray pa3 mt3">
+          (not expr)
+          <span class="light-silver">; any =&gt; nil|any</span>
+        </div>
+        <p>
+          Return it's first argument negated. If given a non-<code>nil</code> value, returns
+          <code>nil</code>. When given <code>nil</code> returns <code>t</code>.
+        </p>
+      </article>
+
+      <article class="mb4" id="d-when">
+        <header>
+          <span class="code b f3">when</span>
+          <span>macro</span>
+        </header>
+        <div class="bg-near-white code mid-gray pa3 mt3">
+          (when test body ...)
+          <span class="light-silver">; any -&gt; any* =&gt; any</span>
+        </div>
+        <p>
+          If test evaluates to a non-<code>nil</code> value, evaluates body expressions and returns
+          the value of the last one.
+        </p>
+      </article>
+
+      <article class="mb4" id="d-unless">
+        <header>
+          <span class="code b f3">unless</span>
+          <span>macro</span>
+        </header>
+        <div class="bg-near-white code mid-gray pa3 mt3">
+          (unless test body ...)
+          <span class="light-silver">; any -&gt; any* =&gt; any</span>
+        </div>
+        <p>
+          If test evaluates to <code>nil</code>, evaluates body expressions and returns the value
+          of the last one.
+        </p>
+      </article>
+
+      <article class="mb4" id="d-or">
+        <header>
+          <span class="code b f3">or</span>
+          <span>macro</span>
+        </header>
+        <div class="bg-near-white code mid-gray pa3 mt3">
+          (or expr ...)
+          <span class="light-silver">; any* =&gt; any</span>
+        </div>
+        <p>
+          Evaluates expressions given in order returning the first non-<code>nil</code> value or
+          <code>nil</code>.
+        </p>
+      </article>
+
+      <article class="mb4" id="d-and">
+        <header>
+          <span class="code b f3">and</span>
+          <span>macro</span>
+        </header>
+        <div class="bg-near-white code mid-gray pa3 mt3">
+          (and expr ...)
+          <span class="light-silver">; any* =&gt; any</span>
+        </div>
+        <p>
+          Evaluates expressions given in order returning with <code>nil</code> as soon as
+          encountered. If all expressions are non-<code>nil</code> returns the value of the last one.
+        </p>
+      </article>
 
     </main>
   </div>
