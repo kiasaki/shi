@@ -36,26 +36,32 @@ syntax keyword shiBuiltin ">"
 syntax keyword shiBuiltin ">="
 syntax keyword shiBuiltin "="
 syntax keyword shiBuiltin "/="
+syntax keyword shiBuiltin ":"
 
 " stdlib shi
 syntax keyword shiFunc quote gensym macro-expand
 syntax keyword shiFunc apply
 syntax keyword shiFunc list
 syntax keyword shiFunc type
-syntax keyword shiFunc true? nil? int? str? cons? list? sym? prim? atom?
-syntax keyword shiFunc apply call identity
+syntax keyword shiFunc true? nil? int? str? cons? list? sym? prim? atom? obj? fn? macro?
+syntax keyword shiFunc apply identity compose curry ->
+syntax keyword shiFunc box unbox swap!
+syntax keyword shiFunc alist? alist-has? alist-get alist-set alist-set-in alist-update
+syntax keyword shiFunc alist-update-in alist-del alist-keys alist-vals
+syntax keyword shiFunc obj obj-get obj-set obj-del obj-proto obj-proto-set! super
 syntax keyword shiFunc cons car cdr set-car!
 syntax keyword shiFunc first rest caar cadr second cdar cddr
 syntax keyword shiFunc caaar caadr cadar caddr third cdaar cdadr cddar cdddr
+syntax keyword shiFunc range pair? odd? add1 sub1 min max abs num->str
 syntax keyword shiFunc length reverse nth empty?
 syntax keyword shiFunc eq? eql? not when unless and or
+syntax keyword shiFunc dolist dotimes map reduce
+syntax keyword shiFunc conj extend
 syntax keyword shiFunc unquote unquote-splicing quasiquote
 syntax keyword shiFunc pr-str write getenv open close readb writeb exit rand millis seconds
 syntax keyword shiFunc newline pr prn print println
 syntax keyword shiFunc sleep open close read bind-inet socket listen accept
 syntax keyword shiFunc str str-len read-all
-
-syntax match shiKeyword ":\<\k\+\>"
 
 syntax match shiStringEscape "\v\\%([\\btnfr"]|u\x{4}|[0-3]\o{2}|\o{1,2})" contained
 syntax region shiString start=/"/ skip=/\\"/ end=/"/ contains=shiStringEscape,@Spell
@@ -69,7 +75,7 @@ syntax match shiVarArg "\."
 syntax match shiComment ";.*$" contains=shiCommentTodo,@Spell
 syntax keyword shiCommentTodo contained FIXME TODO HACK FIXME: TODO: HACK:
 
-syntax cluster shiTop contains=@Spell,shiBracketError,shiComment,shiVarArg,shiBoolean,shiNumber,shiKeyword,shiString,shiStringEscape,shiBuiltin,shiFunc,shiSymbol,shiList,shiArray,shiObject
+syntax cluster shiTop contains=@Spell,shiBracketError,shiComment,shiVarArg,shiBoolean,shiNumber,shiString,shiStringEscape,shiBuiltin,shiFunc,shiSymbol,shiList,shiArray,shiObject
 
 syntax region shiList   matchgroup=shiDelim start="("  matchgroup=shiDelim end=")" contains=@shiTop fold
 syntax region shiArray  matchgroup=shiDelim start="\[" matchgroup=shiDelim end="\]" contains=@shiTop fold
@@ -81,7 +87,6 @@ syntax sync fromstart
 
 highlight default link shiBuiltin      Keyword
 highlight default link shiFunc         Identifier
-highlight default link shiKeyword      String
 highlight default link shiString       String
 highlight default link shiStringEscape Character
 highlight default link shiNumber       Number

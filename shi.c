@@ -1402,6 +1402,14 @@ static Val *prim_obj_proto_set(void *root, Val **env, Val **list) {
   return args->car;
 }
 
+static Val *prim_obj_to_alist(void *root, Val **env, Val **list) {
+  if (length(*list) != 1) error("obj->alist: expected exactly 1 arg");
+  Val *args = eval_list(root, env, list);
+  if (args->car->type != TOBJ) error("obj->alist: expected 1st argument to be object");
+
+  return args->car->props;
+}
+
 // }}}
 
 // {{{ primitives: list
@@ -1870,6 +1878,7 @@ static void define_primitives(void *root, Val **env) {
   add_primitive(root, env, "obj-del", prim_obj_del);
   add_primitive(root, env, "obj-proto", prim_obj_proto);
   add_primitive(root, env, "obj-proto-set!", prim_obj_proto_set);
+  add_primitive(root, env, "obj->alist", prim_obj_to_alist);
 
   // Math
   add_primitive(root, env, "+", prim_plus);
