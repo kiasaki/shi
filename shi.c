@@ -743,6 +743,9 @@ static Val *reader_alist(Reader *r, void *root) {
       if (length(*head) % 2 != 0) {
         error("Alist contains un-even number of elements");
       }
+      if (*head == Nil) {
+        return Nil;
+      }
 
       *ahead = Nil;
       *list_sym = intern(root, "list");
