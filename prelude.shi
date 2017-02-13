@@ -237,6 +237,10 @@
 
 (defn identity (x) x)
 
+(defn curry (f . args)
+  (fn args2
+    (apply f (extend args args2))))
+
 (defn compose fns
   (def call (fn (fns args)
     (if (cdr fns)
@@ -344,6 +348,11 @@
 
 ; Objects
 ; ==========================
+
+(defmacro : (obj prop)
+  (if (eq? obj 'super)
+    (list 'curry (list 'obj-get (list 'obj-proto obj) prop) obj)
+    (list 'curry (list 'obj-get obj prop))))
 
 
 ; Collections

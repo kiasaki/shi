@@ -1,4 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -e
 
 filter="$1"
 
@@ -25,12 +26,21 @@ function do_run() {
 }
 
 function run() {
-  if [[ "$1" =~ "$filter" ]]; then
+  # TODO refactor so there is no copypasted run section
+  if [[ -z "$filter" ]]; then
     echo -n "Testing $1 ... "
     # Run the tests twice to test the garbage collector with different settings.
     MINILISP_ALWAYS_GC= do_run "$@"
     MINILISP_ALWAYS_GC=1 do_run "$@"
     echo ok
+  else
+    if [[ "$1" =~ "$filter" ]]; then
+      echo -n "Testing $1 ... "
+      # Run the tests twice to test the garbage collector with different settings.
+      MINILISP_ALWAYS_GC= do_run "$@"
+      MINILISP_ALWAYS_GC=1 do_run "$@"
+      echo ok
+    fi
   fi
 }
 

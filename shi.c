@@ -11,6 +11,7 @@
 #include <strings.h>
 #include <time.h>
 #include <unistd.h>
+#include <sys/mman.h>
 
 #include <arpa/inet.h>
 #include <fcntl.h>
@@ -134,7 +135,7 @@ static Val *Symbols;
 // {{{ memory
 
 // The size of the heap in byte
-static const unsigned int MEMORY_SIZE = 131072;
+static const unsigned int MEMORY_SIZE = 67108864; // 64mb
 
 // The pointer pointing to the beginning of the current heap
 static void *memory;
@@ -320,9 +321,8 @@ static inline Val *forward(Val *obj) {
 
 static void *alloc_semispace() {
   // #include <sys/mman.h>
-  // return mmap(NULL, MEMORY_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE |
-  // MAP_ANON, -1, 0);
-  return malloc(MEMORY_SIZE);
+  return mmap(NULL, MEMORY_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+  // return malloc(MEMORY_SIZE);
 }
 
 static char *pr_str(void *root, Val *);
@@ -395,8 +395,8 @@ static void gc(void *root) {
   }
 
   // Finish up GC.
-  // munmap(from_space, MEMORY_SIZE);
-  free(from_space);
+  munmap(from_space, MEMORY_SIZE);
+  // free(from_space);
   size_t old_nused = mem_nused;
   mem_nused = (size_t)((uint8_t *)scan1 - (uint8_t *)memory);
   if (debug_gc)
@@ -567,7 +567,7 @@ static char *pr_str(void *root, Val *obj) {
     len += sprintf(&buf[len], "\"");
     return buf;
   case TOBJ:
-    val = obj_find(&obj, intern(root, "name"));
+    val = obj_find(&obj, intern(root, "*object-name*"));
     if (val != NULL && val->cdr->type == TSTR) {
       len += sprintf(&buf[len], "<object %s %p>", val->cdr->strv, obj);
     } else {
@@ -1319,6 +1319,9 @@ static Val *prim_obj_set(void *root, Val **env, Val **list) {
   if (args->car->type != TOBJ) error("obj-set: expected 1st argument to be object");
   if (args->cdr->car->type != TSYM) error("obj-set: expected 2nd argument to be symbol");
 
+  print(root, args);
+  printf("\n");
+
   DEFINE4(root, o, k, v, value);
   *o = args->car;
   *k = args->cdr->car;
@@ -1833,7 +1836,6 @@ static void define_primitives(void *root, Val **env) {
 
   // Object
   add_primitive(root, env, "obj", prim_obj);
-  add_primitive(root, env, ":", prim_obj_get);
   add_primitive(root, env, "obj-get", prim_obj_get);
   add_primitive(root, env, "obj-set", prim_obj_set);
   add_primitive(root, env, "obj-del", prim_obj_del);
@@ -2007,8 +2009,8 @@ int main(int argc, char **argv) {
   signal(SIGCHLD, SIG_IGN);
 
   // Debug flags
-  debug_gc = get_env_flag("MINILISP_DEBUG_GC");
-  always_gc = get_env_flag("MINILISP_ALWAYS_GC");
+  debug_gc = get_env_flag("SHI_DEBUG_GC");
+  always_gc = get_env_flag("SHI_ALWAYS_GC");
 
   // Memory allocation
   memory = alloc_semispace();
