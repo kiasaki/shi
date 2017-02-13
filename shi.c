@@ -1729,6 +1729,32 @@ static Val *prim_close(void *root, Val **env, Val **list) {
   return Nil;
 }
 
+// (isatty fd)
+static Val *prim_isatty(void *root, Val **env, Val **list) {
+  if (length(*list) != 1)
+    error("isatty: not given exactly 1 args");
+  Val *values = eval_list(root, env, list);
+  if (values->car->type != TINT)
+    error("isatty: 1st arg not int");
+
+  return isatty(values->car->intv) ? True : Nil;
+}
+
+// (getenv str)
+static Val *prim_getenv(void *root, Val **env, Val **list) {
+  if (length(*list) != 1)
+    error("getenv: not given exactly 1 args");
+  Val *values = eval_list(root, env, list);
+  if (values->car->type != TSTR)
+    error("getenv: 1st arg not string");
+
+  char *val = getenv(values->car->strv);
+  if (val == NULL) {
+    return Nil;
+  }
+  return make_string(root, val);
+}
+
 // }}}
 
 // {{{ primitives: net
@@ -1951,6 +1977,8 @@ static void define_primitives(void *root, Val **env) {
   add_primitive(root, env, "exit", prim_exit);
   add_primitive(root, env, "open", prim_open);
   add_primitive(root, env, "close", prim_close);
+  add_primitive(root, env, "isatty", prim_isatty);
+  add_primitive(root, env, "getenv", prim_getenv);
 
   // Net
   add_primitive(root, env, "socket", prim_socket);
@@ -2034,6 +2062,8 @@ Val *eval_reader(Reader *r, void *root, Val **env) {
       return *val;
     if (*expr == Cparen)
       error("Stray close parenthesis");
+    if (*expr == Ccurly)
+      error("Stray close curly bracket");
     if (*expr == Dot)
       error("Stray dot");
     *val = eval(root, env, expr);
