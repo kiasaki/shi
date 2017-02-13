@@ -350,9 +350,15 @@
 ; ==========================
 
 (defmacro : (obj prop)
-  (if (eq? obj 'super)
-    (list 'curry (list 'obj-get (list 'obj-proto obj) prop) obj)
-    (list 'curry (list 'obj-get obj prop))))
+  (def val-name (gensym))
+  (list 'do
+    (list 'def val-name (list 'obj-get obj prop))
+    (list 'if (list 'fn? val-name)
+      (list 'curry val-name obj)
+      val-name)))
+
+(defn super (obj prop)
+  (curry (obj-get (obj-proto obj) prop) obj))
 
 
 ; Collections
@@ -548,9 +554,9 @@
   (cons 510 "Not Extended")
   (cons 511 "Network Authentication Required")))
 
-(defn http:server (host port)
-  (unless (str? host) (error "http:server: host not string"))
-  (unless (int? port) (error "http:server: port not int"))
+(defn http/server (host port)
+  (unless (str? host) (error "http/server: host not string"))
+  (unless (int? port) (error "http/server: port not int"))
 
   (def backlog-len 32)
   (def listen-fd (socket PF_INET SOCK_STREAM 0))
@@ -562,7 +568,7 @@
          (cons 'running nil)
          (cons 'handlers '()))))
 
-(defn http:listen (srv)
+(defn http/listen (srv)
   (swap! srv (fn (srv) (alist-set srv 'running t)))
   (def client-fd nil)
   (while (alist-get @srv 'running)
@@ -598,10 +604,10 @@
       (close client-fd)))
   (close (alist-get @srv 'listen-sock)))
 
-(defn http:close (srv)
+(defn http/close (srv)
   (swap! srv (fn (srv) (alist-set srv 'running nil))))
 
-(defn http:add (srv method path handler-fn)
+(defn http/add (srv method path handler-fn)
   (swap! srv (fn (srv)
     (alist-set srv 'handlers
       (cons
@@ -610,17 +616,17 @@
               (cons 'handler-fn handler-fn))
         (alist-get srv 'handlers))))))
 
-(defn http:get (srv path handler-fn)
-  (http:add srv 'GET path handler-fn))
+(defn http/get (srv path handler-fn)
+  (http/add srv 'GET path handler-fn))
 
-(defn http:post (srv path handler-fn)
-  (http:add srv 'POST path handler-fn))
+(defn http/post (srv path handler-fn)
+  (http/add srv 'POST path handler-fn))
 
-(defn http:put (srv path handler-fn)
-  (http:add srv 'PUT path handler-fn))
+(defn http/put (srv path handler-fn)
+  (http/add srv 'PUT path handler-fn))
 
-(defn http:del (srv path handler-fn)
-  (http:add srv 'DELETE path handler-fn))
+(defn http/del (srv path handler-fn)
+  (http/add srv 'DELETE path handler-fn))
 
-(defn http:head (srv path handler-fn)
-  (http:add srv 'HEAD path handler-fn))
+(defn http/head (srv path handler-fn)
+  (http/add srv 'HEAD path handler-fn))

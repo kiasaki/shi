@@ -116,9 +116,6 @@ typedef struct Val {
   };
 } Val;
 
-// Globals
-FILE *current_file;
-
 // Constants
 static Val *True = &(Val){TTRUE, 0, {0}};
 static Val *Nil = &(Val){TNIL, 0, {0}};
@@ -219,8 +216,8 @@ static void gc(void *root);
   Val **var1 = (Val **)(root_ADD_ROOT_ + 1);                                   \
   Val **var2 = (Val **)(root_ADD_ROOT_ + 2);                                   \
   Val **var3 = (Val **)(root_ADD_ROOT_ + 3);                                   \
-  Val **var3 = (Val **)(root_ADD_ROOT_ + 4);                                   \
-  Val **var4 = (Val **)(root_ADD_ROOT_ + 5)
+  Val **var4 = (Val **)(root_ADD_ROOT_ + 4);                                   \
+  Val **var5 = (Val **)(root_ADD_ROOT_ + 5)
 
 // Round up the given value to a multiple of size. Size must be a power of 2. It
 // adds size - 1
@@ -811,17 +808,49 @@ static Val *read_string(Reader *r, void *root) {
 }
 
 static Val *read_symbol(Reader *r, void *root, char c) {
-  char buf[SYMBOL_MAX_LEN + 1];
-  buf[0] = c;
+  char buf1[SYMBOL_MAX_LEN + 1];
+  char buf2[SYMBOL_MAX_LEN + 1];
+  bool found_colon = false;
   int len = 1;
+  buf1[0] = c;
+
   while (valid_symbol_char(reader_peek(r))) {
     if (SYMBOL_MAX_LEN <= len) {
       error("Symbol name too long");
     }
-    buf[len++] = reader_next(r);
+    if (!found_colon) {
+      // Normal case
+      buf1[len++] = reader_next(r);
+
+      // Found colon syntax, split up
+      if (buf1[len-1] == ':') {
+        buf1[len-1] = '\0';
+        len = 0;
+        found_colon = true;
+      }
+    } else {
+      // Building second part of object get syntax
+      buf2[len++] = reader_next(r);
+    }
   }
-  buf[len] = '\0';
-  return intern(root, buf);
+
+  if (found_colon && len > 0) {
+    buf2[len] = '\0';
+    DEFINE5(root, expr, quote_sym, colon_sym, obj_sym, prop_sym);
+    *quote_sym = intern(root, "quote");
+    *colon_sym = intern(root, ":");
+    *obj_sym = intern(root, buf1);
+    *prop_sym = intern(root, buf2);
+    *expr = cons(root, prop_sym, &Nil);
+    *expr = cons(root, quote_sym, expr);
+    *expr = cons(root, expr, &Nil);
+    *expr = cons(root, obj_sym, expr);
+    *expr = cons(root, colon_sym, expr);
+    return *expr;
+  }
+
+  buf1[len] = '\0';
+  return intern(root, buf1);
 }
 
 static Val *reader_expr(Reader *r, void *root) {
