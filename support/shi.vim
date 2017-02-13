@@ -23,6 +23,7 @@ syntax keyword shiBuiltin do
 syntax keyword shiBuiltin while
 syntax keyword shiBuiltin defn defmacro
 syntax keyword shiBuiltin let
+syntax keyword shiBuiltin self
 
 " builtin operators
 syntax keyword shiBuiltin "+"

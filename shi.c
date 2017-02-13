@@ -60,6 +60,7 @@ enum {
   TNIL,
   TDOT,
   TCPAREN,
+  TCCURLY,
 };
 
 // Typedef for the primitive function
@@ -121,6 +122,7 @@ static Val *True = &(Val){TTRUE, 0, {0}};
 static Val *Nil = &(Val){TNIL, 0, {0}};
 static Val *Dot = &(Val){TDOT, 0, {0}};
 static Val *Cparen = &(Val){TCPAREN, 0, {0}};
+static Val *Ccurly = &(Val){TCCURLY, 0, {0}};
 
 // The list containing all symbols. Such data structure is traditionally called
 // the "obarray", but I
@@ -218,6 +220,15 @@ static void gc(void *root);
   Val **var3 = (Val **)(root_ADD_ROOT_ + 3);                                   \
   Val **var4 = (Val **)(root_ADD_ROOT_ + 4);                                   \
   Val **var5 = (Val **)(root_ADD_ROOT_ + 5)
+
+#define DEFINE6(root, var1, var2, var3, var4, var5, var6)                      \
+  ADD_ROOT(root, 6);                                                           \
+  Val **var1 = (Val **)(root_ADD_ROOT_ + 1);                                   \
+  Val **var2 = (Val **)(root_ADD_ROOT_ + 2);                                   \
+  Val **var3 = (Val **)(root_ADD_ROOT_ + 3);                                   \
+  Val **var4 = (Val **)(root_ADD_ROOT_ + 4);                                   \
+  Val **var5 = (Val **)(root_ADD_ROOT_ + 5);                                   \
+  Val **var6 = (Val **)(root_ADD_ROOT_ + 6)
 
 // Round up the given value to a multiple of size. Size must be a power of 2. It
 // adds size - 1
@@ -715,6 +726,46 @@ static Val *reader_list(Reader *r, void *root) {
   }
 }
 
+// Reads an alist. Note that '{' has already been read.
+static Val *reader_alist(Reader *r, void *root) {
+  DEFINE6(root, obj, head, ahead, pair, list_sym, cons_sym);
+  *head = Nil;
+
+  for (;;) {
+    *obj = reader_expr(r, root);
+    if (!*obj)
+      error("Unclosed curly brace");
+    if (*obj == Dot)
+      error("Stray dot in alist");
+    if (*obj == Cparen)
+      error("Stray closing parent in alist");
+    if (*obj == Ccurly) {
+      if (length(*head) % 2 != 0) {
+        error("Alist contains un-even number of elements");
+      }
+
+      *ahead = Nil;
+      *list_sym = intern(root, "list");
+      *cons_sym = intern(root, "cons");
+      do {
+        // Pop the two last items (value first as they are reversed)
+        *obj = (*head)->car;
+        *pair = cons(root, obj, &Nil);
+        *obj = (*head)->cdr->car;
+        *pair = cons(root, obj, pair);
+        *pair = cons(root, cons_sym, pair);
+        *head = (*head)->cdr->cdr;
+
+        *ahead = cons(root, pair, ahead);
+      } while (*head != Nil);
+      *ahead = reverse(*ahead);
+      return cons(root, list_sym, ahead);
+    }
+
+    *head = cons(root, obj, head);
+  }
+}
+
 // 'def -> (quote def)
 static Val *read_quote(Reader *r, void *root) {
   DEFINE2(root, sym, tmp);
@@ -868,6 +919,10 @@ static Val *reader_expr(Reader *r, void *root) {
       return reader_list(r, root);
     if (c == ')')
       return Cparen;
+    if (c == '{')
+      return reader_alist(r, root);
+    if (c == '}')
+      return Ccurly;
     if (c == '.')
       return Dot;
     if (c == '\'')
@@ -1079,7 +1134,7 @@ static Val *handle_function(void *root, Val **env, Val **list, int type) {
   if ((*list)->type != TCELL ||
       !(is_list((*list)->car) || (*list)->car->type == TSYM) ||
       (*list)->cdr->type != TCELL)
-    error("Malformed fn or macro");
+    error("Malformed fn or macro: %s", pr_str(root, *list));
 
   DEFINE2(root, params, body);
   *params = (*list)->car;

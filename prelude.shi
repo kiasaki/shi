@@ -357,8 +357,19 @@
       (list 'curry val-name obj)
       val-name)))
 
-(defn super (obj prop)
-  (curry (obj-get (obj-proto obj) prop) obj))
+(defn super (obj prop . args)
+  (def v (obj-get (obj-proto obj) prop))
+  (if (fn? v)
+    (apply v args)
+    v))
+
+(defn new (o . args)
+  (def inst (obj o '()))
+  (apply inst:new args)
+  o)
+
+(def Obj (obj nil (list
+  (cons 'init (fn (self) nil)))))
 
 
 ; Collections
