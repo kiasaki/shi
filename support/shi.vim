@@ -21,7 +21,7 @@ syntax keyword shiBuiltin fn
 syntax keyword shiBuiltin if cond
 syntax keyword shiBuiltin do
 syntax keyword shiBuiltin while
-syntax keyword shiBuiltin defn defmacro
+syntax keyword shiBuiltin defn defmacro defobj new super
 syntax keyword shiBuiltin let
 syntax keyword shiBuiltin self
 
@@ -49,14 +49,14 @@ syntax keyword shiFunc apply identity compose curry ->
 syntax keyword shiFunc box unbox swap!
 syntax keyword shiFunc alist? alist-has? alist-get alist-set alist-set-in alist-update
 syntax keyword shiFunc alist-update-in alist-del alist-keys alist-vals
-syntax keyword shiFunc obj obj-get obj-set obj-del obj-proto obj-proto-set! super
+syntax keyword shiFunc obj obj-get obj-set obj-del obj-proto obj-proto-set!
 syntax keyword shiFunc cons car cdr set-car!
 syntax keyword shiFunc first rest caar cadr second cdar cddr
 syntax keyword shiFunc caaar caadr cadar caddr third cdaar cdadr cddar cdddr
 syntax keyword shiFunc range pair? odd? add1 sub1 min max abs num->str
 syntax keyword shiFunc length reverse nth empty?
 syntax keyword shiFunc eq? eql? not when unless and or
-syntax keyword shiFunc dolist dotimes map reduce
+syntax keyword shiFunc dolist dotimes map filter foreach reduce
 syntax keyword shiFunc conj extend
 syntax keyword shiFunc unquote unquote-splicing quasiquote
 syntax keyword shiFunc pr-str write getenv open close readb writeb exit rand millis seconds

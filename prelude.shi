@@ -21,8 +21,8 @@
 
 (def defobj (macro (name proto props)
   (list 'do
-    (list 'def name (list 'obj (list 'quote name) proto props))
-    (list 'set (list ': name '*object-name*) (list 'sym->str (list 'quote name))))))
+    (list 'def name (list 'obj proto props))
+    (list 'set (list ': name ''*object-name*) (list 'sym->str (list 'quote name))))))
 
 ; Types
 ; ==========================
@@ -203,6 +203,17 @@
   (dolist (x coll (reverse ret))
     (set ret (cons (f x) ret))))
 
+(defn foreach (f coll)
+  (map f coll)
+  nil)
+
+(defn filter (f coll)
+  (def ret nil)
+  (dolist (x coll (reverse ret))
+    (def keep? (f x))
+    (if keep?
+      (set ret (cons x ret)))))
+
 ; (reduce fn coll) -or- (reduce fn init coll)
 (defn reduce (f . args)
   (if (cdr args)
@@ -264,6 +275,17 @@
         (loop threaded (rest forms)))
       x)))
   (loop x forms))
+
+
+; Strings
+; ==========================
+
+
+; Symbols
+; ==========================
+
+(defn sym->str (s)
+  (pr-str s))
 
 
 ; Boxes
@@ -370,11 +392,11 @@
 
 (defn new (o . args)
   (def inst (obj o '()))
-  (apply inst:new args)
+  (apply inst:init args)
   o)
 
-(def Obj (obj nil (list
-  (cons 'init (fn (self) nil)))))
+(defobj Obj nil
+  {'init (fn (self) nil)})
 
 
 ; Collections
@@ -455,17 +477,6 @@
                       (vals (cdr x)))))
      `((fn ,(vars args) ,@body) ,@(vals args)))
    nil nil))
-
-
-; Strings
-; ==========================
-
-
-; Symbols
-; ==========================
-
-(defn sym->str (s)
-  (pr-str s))
 
 
 ; IO

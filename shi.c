@@ -1201,7 +1201,8 @@ static Val *prim_set(void *root, Val **env, Val **list) {
 
     *obj_val = obj_find(obj, *bind);
     if (*obj_val == NULL) {
-      (*obj)->props = acons(root, bind, value, obj);
+      *obj_val = (*obj)->props; // props
+      (*obj)->props = acons(root, bind, value, obj_val);
     } else {
       (*obj_val)->cdr = *value;
     }
@@ -1282,7 +1283,7 @@ static Val *prim_apply(void *root, Val **env, Val **list) {
 
   *args = (*list)->cdr->car;
   *args = eval(root, env, args);
-  if ((*args)->type != TCELL)
+  if ((*args)->type != TCELL && *args != Nil)
     error("apply: 2nd argument is not a list");
 
   return apply(root, env, fn, args, false);
@@ -1439,7 +1440,8 @@ static Val *prim_obj_set(void *root, Val **env, Val **list) {
   *v = args->cdr->cdr->car;
   *value = obj_find(o, *k);
   if (*value == NULL) {
-    (*o)->props = acons(root, k, v, o);
+    *value = (*o)->props; // props
+    (*o)->props = acons(root, k, v, value);
   } else {
     (*value)->cdr = *v;
   }

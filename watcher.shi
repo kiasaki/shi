@@ -1,0 +1,51 @@
+(def *ev-watchers* '())
+
+(defobj EventEmitter Obj
+  {'listeners (new Obj)
+
+   'event-listeners (fn (self name)
+     "Gets a list of event listeners for `name`."
+     (if (alist-has? (obj->alist self:listeners) name)
+       (obj-get self:listeners name)
+       nil))
+
+   'emit (fn (self name . args)
+     "Call all listeners for event `name` with `args`."
+     (def ls (self:event-listeners name))
+     (foreach (fn (l) (apply l args)) ls))
+
+   'on (fn (self name f)
+     "Call `f` everytime event `name` is emitted."
+     (obj-set self:listeners name (cons f (self:event-listeners name))))
+
+   'once (fn (self name f)
+     "Call `f` on event `name` once."
+     (self:on name (fn args
+       (self:off name f)
+       (apply f args))))
+
+   'off (fn (self name f)
+     "Removes `f` from the list of listeners for event `name`."
+     (def ls (self:event-listeners name))
+     (def not-f (fn (x) (not (eq? x f))))
+     (obj-set self:listeners name (filter not-f ls)))})
+
+(defobj EvTimer EventEmitter
+  {})
+
+
+(def ee (new EventEmitter))
+
+(ee:on 'derp (fn ()
+  (println "derp1")))
+(def derp2 (fn ()
+  (println "derp2")))
+(ee:on 'derp derp2)
+(ee:once 'herp (fn ()
+  (println "herp")))
+
+(ee:emit 'derp)
+(ee:off 'derp derp2)
+(ee:emit 'derp)
+(ee:emit 'herp)
+(ee:emit 'herp)
