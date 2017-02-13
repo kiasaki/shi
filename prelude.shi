@@ -456,6 +456,18 @@
      `((fn ,(vars args) ,@body) ,@(vals args)))
    nil nil))
 
+
+; Strings
+; ==========================
+
+
+; Symbols
+; ==========================
+
+(defn sym->str (s)
+  (pr-str s))
+
+
 ; IO
 ; ==========================
 
