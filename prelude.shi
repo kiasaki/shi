@@ -19,6 +19,11 @@
 (def defmacro (macro (name args . exprs)
   (list 'def name (cons 'macro (cons args exprs)))))
 
+(def defobj (macro (name proto props)
+  (list 'do
+    (list 'def name (list 'obj (list 'quote name) proto props))
+    (list 'set (list ': name '*object-name*) (list 'sym->str (list 'quote name))))))
+
 ; Types
 ; ==========================
 
