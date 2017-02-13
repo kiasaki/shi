@@ -1175,11 +1175,38 @@ static Val *prim_def(void *root, Val **env, Val **list) {
   return *value;
 }
 
-// (set <symbol> expr)
+// (set <symbol> expr) or (set (: obj key) val)
 static Val *prim_set(void *root, Val **env, Val **list) {
-  if (length(*list) != 2 || (*list)->car->type != TSYM)
+  DEFINE4(root, bind, value, obj, obj_val);
+  if (length(*list) != 2)
     error("Malformed set");
-  DEFINE2(root, bind, value);
+
+  // Check for obj-set syntax (set (: obj key) val)
+  if ((*list)->car->type == TCELL &&
+      length((*list)->car) == 3 &&
+      (*list)->car->car->type == TSYM &&
+      (*list)->car->car->symv[0] == ':') {
+    *obj = (*list)->car->cdr->car;
+    *obj = eval(root, env, obj);
+    *bind = (*list)->car->cdr->cdr->car;
+    *bind = eval(root, env, bind);
+    *value = (*list)->cdr->car;
+    *value = eval(root, env, value);
+
+    if ((*obj)->type != TOBJ) error("set: (:) 1st arg is not an object");
+    if ((*bind)->type != TSYM) error("set: (:) 2nd arg is not a symbol");
+
+    *obj_val = obj_find(obj, *bind);
+    if (*obj_val == NULL) {
+      (*obj)->props = acons(root, bind, value, obj);
+    } else {
+      (*obj_val)->cdr = *value;
+    }
+    return *obj;
+  }
+
+  if ((*list)->car->type != TSYM)
+    error("Malformed set");
   *bind = find(env, (*list)->car);
   if (!*bind)
     error("Unbound variable %s", (*list)->car->symv);
@@ -1402,9 +1429,6 @@ static Val *prim_obj_set(void *root, Val **env, Val **list) {
   Val *args = eval_list(root, env, list);
   if (args->car->type != TOBJ) error("obj-set: expected 1st argument to be object");
   if (args->cdr->car->type != TSYM) error("obj-set: expected 2nd argument to be symbol");
-
-  print(root, args);
-  printf("\n");
 
   DEFINE4(root, o, k, v, value);
   *o = args->car;
