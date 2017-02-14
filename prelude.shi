@@ -675,10 +675,28 @@
 ; Shi Cli
 ; ==========================
 
+(defn shi-repl ()
+  (def hist-path (str (getenv "HOME") "/.shi-history"))
+  (linenoise-history-load hist-path)
+  (while t
+    (trap-error
+      (fn ()
+        (def line (linenoise "shi> "))
+        (if line
+          (do
+            (linenoise-history-add line)
+            (linenoise-history-save hist-path)
+            (prn (eval (read-sexp line))))
+          (do
+            (println "Bye!")
+            (exit 0))))
+      (fn (err)
+        (println (str "error: " err))))))
+
 (defn shi-main ()
   (cond (>= (length *args*) 2)
           (eval (read-sexp (read-all (second *args*))))
         (not (isatty *stdin*))
           (eval (read-sexp (read-all *stdin*)))
         else
-          (println "REPL!")))
+          (shi-repl)))

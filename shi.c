@@ -620,13 +620,6 @@ static char *pr_str(void *root, Val *obj) {
   }
 }
 
-// Prints the given object.
-static void print(void *root, Val *obj) {
-  char *str = pr_str(root, obj);
-  printf("%s", str);
-  free(str);
-}
-
 // Returns the length of the given list. -1 if it's not a proper list.
 static int length(Val *list) {
   int len = 0;
@@ -1287,16 +1280,6 @@ static Val *prim_eq(void *root, Val **env, Val **list) {
   return values->car == values->cdr->car ? True : Nil;
 }
 
-// (eval expr)
-static Val *prim_eval(void *root, Val **env, Val **list) {
-  if (length(*list) != 1)
-    error("Malformed eval");
-  DEFINE1(root, arg);
-  *arg = (*list)->car;
-  //*val = eval(root, env, arg); ??
-  return eval(root, env, arg);
-}
-
 // (apply fn args)
 static Val *prim_apply(void *root, Val **env, Val **list) {
   if (length(*list) != 2)
@@ -1366,6 +1349,58 @@ static Val *prim_type(void *root, Val **env, Val **list) {
   return *k;
 }
 
+// (eval expr)
+static Val *prim_eval(void *root, Val **env, Val **list) {
+  if (length(*list) != 1)
+    error("Malformed eval");
+  DEFINE1(root, arg);
+  *arg = (*list)->car;
+  *arg = eval(root, env, arg); // arg to ast
+  return eval(root, env, arg); // ast to value
+}
+
+// (read-sexp str)
+static Val *prim_read_sexp(void *root, Val **env, Val **list) {
+  if (length(*list) != 1)
+    error("read-sexp: exactly 1 param required");
+  DEFINE4(root, str, expr, exprs, do_sym);
+  *str = (*list)->car;
+  *str = eval(root, env, str);
+  if ((*str)->type != TSTR)
+    error("read-sexp: 1st arg is not a string");
+
+  Reader *r = reader_new((*str)->strv);
+  *exprs = Nil;
+
+  for (;;) {
+    *expr = reader_expr(r, root);
+    if (!*expr) {
+      reader_destroy(r);
+
+      // Finalize.
+      // For single expressions simply return it
+      // Wrap multiple expressions in a (do ...)
+      if (length(*exprs) == 1) {
+        return (*exprs)->car;
+      } else {
+        *do_sym = intern(root, "do");
+        *exprs = reverse(*exprs);
+        return cons(root, do_sym, exprs);
+      }
+    } else if (*expr == Cparen) {
+      reader_destroy(r);
+      error("Stray close parenthesis");
+    } else if (*expr == Ccurly) {
+      reader_destroy(r);
+      error("Stray close curly bracket");
+    } else if (*expr == Dot) {
+      reader_destroy(r);
+      error("Stray dot");
+    }
+    *exprs = cons(root, expr, exprs);
+  }
+}
+
 // }}}
 
 // {{{ primitives: marco
@@ -1400,7 +1435,7 @@ static Val *prim_gensym(void *root, Val **env, Val **list) {
 
 // }}}
 
-// {{{ object
+// {{{ primitives: object
 
 // (obj proto props) ; nil|obj -> alist -> obj
 static Val *prim_obj(void *root, Val **env, Val **list) {
@@ -1981,6 +2016,69 @@ static Val *prim_accept(void *root, Val **env, Val **list) {
 
   return make_int(root, client_fd);
 }
+
+// }}}
+
+// {{{ primitives: linenoise
+
+// (linenoise prompt)
+static Val *prim_linenoise(void *root, Val **env, Val **list) {
+  if (length(*list) != 1)
+    error("linenoise: not given exactly 1 argument");
+
+  DEFINE2(root, values, str);
+  *values = eval_list(root, env, list);
+  if ((*values)->car->type != TSTR)
+    error("linenoise: 1st arg not string");
+
+  char *line = linenoise((*values)->car->strv);
+  if (line == NULL) {
+    return Nil;
+  }
+  *str = make_string(root, line);
+  free(line);
+  return *str;
+}
+
+// (linenoise-history-load path)
+static Val *prim_linenoise_history_load(void *root, Val **env, Val **list) {
+  if (length(*list) != 1)
+    error("linenoise-history-load: not given exactly 1 argument");
+
+  Val *values = eval_list(root, env, list);
+  if (values->car->type != TSTR)
+    error("linenoise-history-load: 1st arg not string");
+
+  linenoiseHistoryLoad(values->car->strv);
+  return Nil;
+}
+
+// (linenoise-history-add line)
+static Val *prim_linenoise_history_add(void *root, Val **env, Val **list) {
+  if (length(*list) != 1)
+    error("linenoise-history-add: not given exactly 1 argument");
+
+  Val *values = eval_list(root, env, list);
+  if (values->car->type != TSTR)
+    error("linenoise-history-add: 1st arg not string");
+
+  linenoiseHistoryAdd(values->car->strv);
+  return values->car;
+}
+
+// (linenoise-history-save path)
+static Val *prim_linenoise_history_save(void *root, Val **env, Val **list) {
+  if (length(*list) != 1)
+    error("linenoise-history-save: not given exactly 1 argument");
+
+  Val *values = eval_list(root, env, list);
+  if (values->car->type != TSTR)
+    error("linenoise-history-save: 1st arg not string");
+
+  linenoiseHistorySave(values->car->strv);
+  return Nil;
+}
+
 // }}}
 
 static void add_primitive(void *root, Val **env, char *name, Primitive *fn) {
@@ -2039,9 +2137,10 @@ static void define_primitives(void *root, Val **env) {
   add_primitive(root, env, "do", prim_do);
   add_primitive(root, env, "while", prim_while);
   add_primitive(root, env, "eq?", prim_eq);
-  add_primitive(root, env, "eval", prim_eval);
   add_primitive(root, env, "apply", prim_apply);
   add_primitive(root, env, "type", prim_type);
+  add_primitive(root, env, "eval", prim_eval);
+  add_primitive(root, env, "read-sexp", prim_read_sexp);
 
   // Macro
   add_primitive(root, env, "quote", prim_quote);
@@ -2086,6 +2185,12 @@ static void define_primitives(void *root, Val **env) {
   add_primitive(root, env, "bind-inet", prim_bind_inet);
   add_primitive(root, env, "listen", prim_listen);
   add_primitive(root, env, "accept", prim_accept);
+
+  // Linenoise
+  add_primitive(root, env, "linenoise", prim_linenoise);
+  add_primitive(root, env, "linenoise-history-load", prim_linenoise_history_load);
+  add_primitive(root, env, "linenoise-history-add", prim_linenoise_history_add);
+  add_primitive(root, env, "linenoise-history-save", prim_linenoise_history_save);
 }
 // }}}
 
@@ -2095,38 +2200,6 @@ static void define_primitives(void *root, Val **env) {
 static bool get_env_flag(char *name) {
   char *val = getenv(name);
   return val && val[0];
-}
-
-static char *get_env_value(char *name, char *def) {
-  char *val = getenv(name);
-  return val && val[0] ? val : def;
-}
-
-char *fd_read_all(FILE *fd) {
-  int size = 0;
-  int chunksize = 1024;
-  char *contents = malloc(sizeof(char) * chunksize);
-
-  for (;;) {
-    int ret = read(fileno(fd), &contents[size], 128);
-    if (ret < 0) {
-      perror("fd_read_all");
-      exit(1);
-    }
-    if (ret == 0) {
-      contents = realloc(contents, sizeof(char) * (size + 1));
-      contents[size] = '\0';
-      break;
-    }
-
-    size += ret;
-
-    if (size + 128 + 1 >= chunksize) {
-      chunksize = chunksize * 2;
-      contents = realloc(contents, sizeof(char) * chunksize);
-    }
-  }
-  return contents;
 }
 
 char *file_read_all(char *path) {
@@ -2181,56 +2254,9 @@ Val *eval_input(void *root, Val **env, char *input) {
   return *val;
 }
 
-char *setup_repl_history() {
-  char *hist_folder = get_env_value("HOME", ".");
-  char *hist_file = ".shi-history";
-  int hist_folder_len = strlen(hist_folder);
-  int hist_file_len = strlen(hist_file);
-
-  char *hist_path =
-      malloc(sizeof(char) * (hist_folder_len + hist_file_len + 2));
-  strcpy(&hist_path[0], hist_folder);
-  hist_path[hist_folder_len] = '/';
-  strcpy(&hist_path[hist_folder_len + 1], hist_file);
-  hist_folder[hist_folder_len + hist_file_len] = '\0';
-
-  linenoiseHistoryLoad(hist_path);
-
-  return hist_path;
-}
-
-void setup_repl(void *root, Val **env) {
-  DEFINE1(root, val);
-  char *line;
-  char *hist_path = setup_repl_history();
-  linenoiseHistorySetMaxLen(1000);
-
-  int trapped = setjmp(error_jmp_env[error_depth++]);
-  if (trapped != 0) {
-    printf("error: %s\n", error_value);
-    free(error_value);
-  }
-  while ((line = linenoise("shi> ")) != NULL) {
-    if (line[0] != '\0' && line[0] != ',') {
-      linenoiseHistoryAdd(line);
-      linenoiseHistorySave(hist_path);
-
-      *val = eval_input(root, env, line);
-      print(root, *val);
-      printf("\n");
-    } else if (!strncmp(line, ",quit", 5)) {
-      free(line);
-      break;
-    } else if (line[0] == ',') {
-      printf("Unreconized command: %s\n", line);
-    }
-    free(line);
-  }
-
-  printf("Bye!\n");
-  free(hist_path);
-}
-
+// Ran right after the event loop is start so that evaluated code in here runs in the context
+// of a working event loop.
+// Call the `shi-main` method from the prelude at the end.
 static void shi_init_cb(struct ev_loop *loop, ev_timer *w, int revents) {
   (void)revents;
   ev_timer_stop(loop, w);
@@ -2252,6 +2278,9 @@ static void shi_init_cb(struct ev_loop *loop, ev_timer *w, int revents) {
 int main(int argc, char **argv) {
   // Seed random number generator
   pcg32_srandom(time(NULL) ^ (intptr_t)&printf, (intptr_t)&gc);
+
+  // Setup lineoise
+  linenoiseHistorySetMaxLen(1000);
 
   // Debug flags
   debug_gc = get_env_flag("SHI_DEBUG_GC");
