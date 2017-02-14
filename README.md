@@ -8,7 +8,6 @@
 - Async Net/Socket
 - Event Loop
 - Module System
-- Error trowing / catching
 
 ### Other
 

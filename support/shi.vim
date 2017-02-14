@@ -63,6 +63,7 @@ syntax keyword shiFunc pr-str write getenv open close readb writeb exit rand mil
 syntax keyword shiFunc newline pr prn print println
 syntax keyword shiFunc sleep open close read bind-inet socket listen accept
 syntax keyword shiFunc str str-len read-all
+syntax keyword shiFunc error trap-error
 
 syntax match shiStringEscape "\v\\%([\\btnfr"]|u\x{4}|[0-3]\o{2}|\o{1,2})" contained
 syntax region shiString start=/"/ skip=/\\"/ end=/"/ contains=shiStringEscape,@Spell
