@@ -11,6 +11,7 @@
 #include <strings.h>
 #include <time.h>
 #include <unistd.h>
+#include <setjmp.h>
 #include <sys/mman.h>
 
 #include <arpa/inet.h>
@@ -28,12 +29,20 @@
 
 static const char *VERSION = "0.1.0";
 
-static __attribute((noreturn)) void error(char *fmt, ...) {
-  va_list ap;
-  va_start(ap, fmt);
-  vfprintf(stderr, fmt, ap);
-  fprintf(stderr, "\n");
-  va_end(ap);
+// Globals
+static int error_depth = 0;
+static char *error_value;
+static jmp_buf error_jmp_env[10];
+
+static __attribute((noreturn)) void error(char *error_v) {
+  error_value = malloc(sizeof(char *) * (strlen(error_v)+1));
+  char *p = stpcpy(error_value, error_v);
+  *p = '\0';
+  if (error_depth > 0) {
+    error_depth--;
+    longjmp(error_jmp_env[error_depth], 1);
+  }
+  printf("unhandled error: %s\n", error_value);
   exit(1);
 }
 
@@ -397,7 +406,8 @@ static void gc(void *root) {
       scan1->up = forward(scan1->up);
       break;
     default:
-      error("Bug: copy: unknown type %d", scan1->type);
+      // TODO append scan1->type
+      error("Bug: copy: unknown type");
     }
     scan1 = (Val *)((uint8_t *)scan1 + scan1->size);
   }
@@ -604,7 +614,8 @@ static char *pr_str(void *root, Val *obj) {
     // len += sprintf(&buf[len], "<tag %d>", obj->type);
     // return buf;
     free(buf);
-    error("Bug: print: Unknown tag type: %d", obj->type);
+    // TODO append obj->type
+    error("Bug: print: Unknown tag type");
   }
 }
 
@@ -944,7 +955,13 @@ static Val *reader_expr(Reader *r, void *root) {
       return make_int(root, -read_number(r, 0));
     if (valid_symbol_start_char(c))
       return read_symbol(r, root, c);
-    error("Don't know how to handle %c", c);
+
+    // TODO cleanup
+    char *err_text = "Don't know how to handle ";
+    char err_buf[strlen(err_text)];
+    strcpy(err_buf, err_text);
+    err_buf[strlen(err_text)] = c;
+    error(err_buf);
   }
 }
 
@@ -1086,7 +1103,8 @@ static Val *eval(void *root, Val **env, Val **obj) {
     // Variable
     Val *bind = find(env, *obj);
     if (!bind) {
-      error("eval: undefined symbol: %s", (*obj)->symv);
+      // TODO append (*obj)->symv
+      error("eval: undefined symbol");
     }
     return bind->cdr;
   }
@@ -1105,7 +1123,8 @@ static Val *eval(void *root, Val **env, Val **obj) {
     return apply(root, env, fn, args, true);
   }
   default:
-    error("Bug: eval: Unknown tag type: %d", (*obj)->type);
+    // TODO append (*obj)->type
+    error("Bug: eval: Unknown tag type");
   }
 }
 
@@ -1136,8 +1155,10 @@ static Val *prim_while(void *root, Val **env, Val **list) {
 static Val *handle_function(void *root, Val **env, Val **list, int type) {
   if ((*list)->type != TCELL ||
       !(is_list((*list)->car) || (*list)->car->type == TSYM) ||
-      (*list)->cdr->type != TCELL)
-    error("Malformed fn or macro: %s", pr_str(root, *list));
+      (*list)->cdr->type != TCELL) {
+    // TODO append pr_str(root, *list)
+    error("Malformed fn or macro");
+  }
 
   DEFINE2(root, params, body);
   *params = (*list)->car;
@@ -1212,8 +1233,10 @@ static Val *prim_set(void *root, Val **env, Val **list) {
   if ((*list)->car->type != TSYM)
     error("Malformed set");
   *bind = find(env, (*list)->car);
-  if (!*bind)
-    error("Unbound variable %s", (*list)->car->symv);
+  if (!*bind) {
+    // TODO append (*list)->car->symv
+    error("Unbound variable");
+  }
   *value = (*list)->cdr->car;
   *value = eval(root, env, value);
   (*bind)->cdr = *value;
@@ -1333,7 +1356,8 @@ static Val *prim_type(void *root, Val **env, Val **list) {
     name = "macro";
     break;
   default:
-    error("type: unknown object type", values->car->type);
+    // TODO append values->car->type
+    error("type: unknown object type");
   }
 
   DEFINE1(root, k);
@@ -1422,7 +1446,8 @@ static Val *prim_obj_get(void *root, Val **env, Val **list) {
   *k = args->cdr->car;
   *value = obj_find(o, *k);
   if (*value == NULL) {
-    error("obj-get: unbound '%s'", args->cdr->car->symv);
+    // TODO append args->cdr->car->symv
+    error("obj-get: unbound symbol");
   }
 
   return (*value)->cdr;
@@ -1511,7 +1536,7 @@ static Val *prim_cons(void *root, Val **env, Val **list) {
 static Val *prim_car(void *root, Val **env, Val **list) {
   Val *args = eval_list(root, env, list);
   if (args->car->type != TCELL || args->cdr != Nil)
-    error("Malformed car: %s", pr_str(root, args));
+    error("Malformed car");
   return args->car->car;
 }
 
@@ -1634,6 +1659,48 @@ static Val *prim_rand(void *root, Val **env, Val **list) {
     error("rand: 1st arg is not an int");
 
   return make_int(root, pcg32_boundedrand(values->car->intv));
+}
+
+// }}}
+
+// {{{ primitives: error
+
+// (error message)
+static Val *prim_error(void *root, Val **env, Val **list) {
+  if (length(*list) != 1)
+    error("error: takes exactly 1 argument");
+  Val *values = eval_list(root, env, list);
+  Val *str = values->car;
+  if (str->type != TSTR)
+    error("error: 1st arg is not a string");
+
+  error(str->strv);
+}
+
+// (trap-error fn error-fn)
+static Val *prim_trap_error(void *root, Val **env, Val **list) {
+  if (length(*list) != 2)
+    error("trap-error: takes exactly 2 arguments");
+  Val *values = eval_list(root, env, list);
+
+  DEFINE3(root, fn, error_fn, call);
+  *fn = values->car;
+  *error_fn = values->cdr->car;
+  if ((*fn)->type != TFUN || (*error_fn)->type != TFUN)
+    error("trap-error: both args must be functions");
+
+  int trapped = setjmp(error_jmp_env[error_depth++]);
+  if (trapped != 0) {
+    *call = make_string(root, error_value);
+    free(error_value);
+
+    *call = cons(root, call, &Nil);
+    *call = cons(root, error_fn, call);
+  } else {
+    *call = cons(root, fn, &Nil);
+  }
+  return eval(root, env, call);
+
 }
 
 // }}}
@@ -1997,6 +2064,10 @@ static void define_primitives(void *root, Val **env) {
   add_primitive(root, env, "=", prim_num_eq);
   add_primitive(root, env, "rand", prim_rand);
 
+  // Error
+  add_primitive(root, env, "error", prim_error);
+  add_primitive(root, env, "trap-error", prim_trap_error);
+
   // OS
   add_primitive(root, env, "pr-str", prim_pr_str);
   add_primitive(root, env, "write", prim_write);
@@ -2060,7 +2131,8 @@ char *fd_read_all(FILE *fd) {
 char *file_read_all(char *path) {
   FILE *fd = fopen(path, "r");
   if (fd == NULL) {
-    error("file_read_all: failed to open file: %s", path);
+    // TODO append path
+    error("file_read_all: failed to open file");
   }
 
   // Goto EOF and record file size
@@ -2132,10 +2204,16 @@ void setup_repl(void *root, Val **env) {
   char *hist_path = setup_repl_history();
   linenoiseHistorySetMaxLen(1000);
 
+  int trapped = setjmp(error_jmp_env[error_depth++]);
+  if (trapped != 0) {
+    printf("error: %s\n", error_value);
+    free(error_value);
+  }
   while ((line = linenoise("shi> ")) != NULL) {
     if (line[0] != '\0' && line[0] != ',') {
       linenoiseHistoryAdd(line);
       linenoiseHistorySave(hist_path);
+
       *val = eval_input(root, env, line);
       print(root, *val);
       printf("\n");
@@ -2155,10 +2233,6 @@ void setup_repl(void *root, Val **env) {
 int main(int argc, char **argv) {
   // Seed rand
   pcg32_srandom(time(NULL) ^ (intptr_t)&printf, (intptr_t)&gc);
-
-  // TODO implement signal primitive
-  signal(SIGPIPE, SIG_IGN);
-  signal(SIGCHLD, SIG_IGN);
 
   // Debug flags
   debug_gc = get_env_flag("SHI_DEBUG_GC");
