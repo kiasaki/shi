@@ -24,6 +24,7 @@ syntax keyword shiBuiltin while
 syntax keyword shiBuiltin defn defmacro defobj new super
 syntax keyword shiBuiltin let
 syntax keyword shiBuiltin self
+syntax keyword shiBuiltin else
 
 " builtin operators
 syntax keyword shiBuiltin "+"
@@ -44,6 +45,7 @@ syntax keyword shiFunc quote gensym macro-expand
 syntax keyword shiFunc apply
 syntax keyword shiFunc list
 syntax keyword shiFunc type
+syntax keyword shiFunc eval read-sexp
 syntax keyword shiFunc true? nil? int? str? cons? list? sym? prim? atom? obj? fn? macro?
 syntax keyword shiFunc apply identity compose curry ->
 syntax keyword shiFunc box unbox swap!
@@ -59,10 +61,10 @@ syntax keyword shiFunc eq? eql? not when unless and or
 syntax keyword shiFunc dolist dotimes map filter foreach reduce
 syntax keyword shiFunc conj extend
 syntax keyword shiFunc unquote unquote-splicing quasiquote
-syntax keyword shiFunc pr-str write getenv open close readb writeb exit rand millis seconds
+syntax keyword shiFunc pr-str write getenv open close readb writeb exit rand millis seconds isatty
 syntax keyword shiFunc newline pr prn print println
 syntax keyword shiFunc sleep open close read bind-inet socket listen accept
-syntax keyword shiFunc str str-len read-all
+syntax keyword shiFunc str str-len read-all read-all-from
 syntax keyword shiFunc error trap-error
 
 syntax match shiStringEscape "\v\\%([\\btnfr"]|u\x{4}|[0-3]\o{2}|\o{1,2})" contained

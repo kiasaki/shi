@@ -516,13 +516,17 @@
   (print x)
   (newline)))
 
-(defn read-all (path)
-  (def fd (open path))
+(defn read-all-from (fd)
   (def contents "")
   (def last-read (read fd 255))
   (while (> (str-len last-read) 0)
     (set contents (str contents last-read))
     (set last-read (read fd 255)))
+  contents)
+
+(defn read-all (path)
+  (def fd (open path))
+  (def contents (read-all-from fd))
   (close fd)
   contents)
 
@@ -697,6 +701,6 @@
   (cond (>= (length *args*) 2)
           (eval (read-sexp (read-all (second *args*))))
         (not (isatty *stdin*))
-          (eval (read-sexp (read-all *stdin*)))
+          (eval (read-sexp (read-all-from *stdin*)))
         else
           (shi-repl)))

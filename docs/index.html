@@ -47,6 +47,7 @@
         <div><a href="#d-while">while</a></div>
         <div><a href="#d-apply">apply</a></div>
         <div><a href="#d-eval">eval</a></div>
+        <div><a href="#d-read-expr">read-expr</a></div>
 
 
         <div><strong class="b">Conditionals</strong></div>
@@ -229,6 +230,7 @@
         <div><a href="#d-prn">prn</a></div>
         <div><a href="#d-print">print</a></div>
         <div><a href="#d-println">println</a></div>
+        <div><a href="#d-read-all-from">read-all-from</a></div>
         <div><a href="#d-read-all">read-all</a></div>
         <div><a href="#d-exit">exit</a></div>
         <div><a href="#d-sleep">sleep</a></div>
@@ -389,6 +391,21 @@
         </div>
         <p>
           Evaluates the given expression in the current environment.
+        </p>
+      </article>
+
+      <article class="mb4" id="d-read-sexp">
+        <header>
+          <span class="code b f3">read-sexp</span>
+          <span>primitive</span>
+        </header>
+        <div class="bg-near-white code mid-gray pa3 mt3">
+          (read-sexp str)
+          <span class="light-silver">; str =&gt; any</span>
+        </div>
+        <p>
+          Parses given string into shi lisp ast. If given multiple expressions the resulting top
+          level expressions will be wrapped in a <code>do</code> call.
         </p>
       </article>
 
