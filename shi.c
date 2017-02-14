@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
+#include <setjmp.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -9,20 +10,19 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/mman.h>
 #include <time.h>
 #include <unistd.h>
-#include <setjmp.h>
-#include <sys/mman.h>
 
 #include <arpa/inet.h>
 #include <fcntl.h>
-#include <signal.h>
 #include <netinet/in.h>
+#include <signal.h>
 #include <sys/socket.h>
 
+#include "vendor/libev/ev.h"
 #include "vendor/linenoise.h"
 #include "vendor/pcg_basic.h"
-#include "vendor/libev/ev.h"
 
 static const char *VERSION = "0.1.0";
 
@@ -34,7 +34,7 @@ static char *error_value;
 static jmp_buf error_jmp_env[10];
 
 static __attribute((noreturn)) void error(char *error_v) {
-  error_value = malloc(sizeof(char *) * (strlen(error_v)+1));
+  error_value = malloc(sizeof(char *) * (strlen(error_v) + 1));
   char *p = stpcpy(error_value, error_v);
   *p = '\0';
   if (error_depth > 0) {
@@ -117,7 +117,8 @@ typedef struct Val {
       struct Val *env;
     };
     // Environment frame
-    // Linked list of association lists containing the mapping from symbols to their value.
+    // Linked list of association lists containing the mapping from symbols to
+    // their value.
     struct {
       struct Val *vars;
       struct Val *up;
@@ -339,7 +340,8 @@ static inline Val *forward(Val *obj) {
 
 static void *alloc_semispace() {
   // #include <sys/mman.h>
-  return mmap(NULL, MEMORY_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+  return mmap(NULL, MEMORY_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON,
+              -1, 0);
   // return malloc(MEMORY_SIZE);
 }
 
@@ -882,8 +884,8 @@ static Val *read_symbol(Reader *r, void *root, char c) {
       buf1[len++] = reader_next(r);
 
       // Found colon syntax, split up
-      if (buf1[len-1] == ':') {
-        buf1[len-1] = '\0';
+      if (buf1[len - 1] == ':') {
+        buf1[len - 1] = '\0';
         len = 0;
         found_colon = true;
       }
@@ -1200,10 +1202,8 @@ static Val *prim_set(void *root, Val **env, Val **list) {
     error("Malformed set");
 
   // Check for obj-set syntax (set (: obj key) val)
-  if ((*list)->car->type == TCELL &&
-      length((*list)->car) == 3 &&
-      (*list)->car->car->type == TSYM &&
-      (*list)->car->car->symv[0] == ':') {
+  if ((*list)->car->type == TCELL && length((*list)->car) == 3 &&
+      (*list)->car->car->type == TSYM && (*list)->car->car->symv[0] == ':') {
     *obj = (*list)->car->cdr->car;
     *obj = eval(root, env, obj);
     *bind = (*list)->car->cdr->cdr->car;
@@ -1211,8 +1211,10 @@ static Val *prim_set(void *root, Val **env, Val **list) {
     *value = (*list)->cdr->car;
     *value = eval(root, env, value);
 
-    if ((*obj)->type != TOBJ) error("set: (:) 1st arg is not an object");
-    if ((*bind)->type != TSYM) error("set: (:) 2nd arg is not a symbol");
+    if ((*obj)->type != TOBJ)
+      error("set: (:) 1st arg is not an object");
+    if ((*bind)->type != TSYM)
+      error("set: (:) 2nd arg is not a symbol");
 
     *obj_val = obj_find(obj, *bind);
     if (*obj_val == NULL) {
@@ -1472,10 +1474,13 @@ static Val *prim_obj(void *root, Val **env, Val **list) {
 }
 
 static Val *prim_obj_get(void *root, Val **env, Val **list) {
-  if (length(*list) != 2) error("obj-get: expected exactly 2 args");
+  if (length(*list) != 2)
+    error("obj-get: expected exactly 2 args");
   Val *args = eval_list(root, env, list);
-  if (args->car->type != TOBJ) error("obj-get: expected 1st argument to be object");
-  if (args->cdr->car->type != TSYM) error("obj-get: expected 2nd argument to be symbol");
+  if (args->car->type != TOBJ)
+    error("obj-get: expected 1st argument to be object");
+  if (args->cdr->car->type != TSYM)
+    error("obj-get: expected 2nd argument to be symbol");
 
   DEFINE3(root, o, k, value);
   *o = args->car;
@@ -1490,10 +1495,13 @@ static Val *prim_obj_get(void *root, Val **env, Val **list) {
 }
 
 static Val *prim_obj_set(void *root, Val **env, Val **list) {
-  if (length(*list) != 3) error("obj-set: expected exactly 2 args");
+  if (length(*list) != 3)
+    error("obj-set: expected exactly 2 args");
   Val *args = eval_list(root, env, list);
-  if (args->car->type != TOBJ) error("obj-set: expected 1st argument to be object");
-  if (args->cdr->car->type != TSYM) error("obj-set: expected 2nd argument to be symbol");
+  if (args->car->type != TOBJ)
+    error("obj-set: expected 1st argument to be object");
+  if (args->cdr->car->type != TSYM)
+    error("obj-set: expected 2nd argument to be symbol");
 
   DEFINE4(root, o, k, v, value);
   *o = args->car;
@@ -1511,10 +1519,13 @@ static Val *prim_obj_set(void *root, Val **env, Val **list) {
 }
 
 static Val *prim_obj_del(void *root, Val **env, Val **list) {
-  if (length(*list) != 2) error("obj-del: expected exactly 2 args");
+  if (length(*list) != 2)
+    error("obj-del: expected exactly 2 args");
   Val *args = eval_list(root, env, list);
-  if (args->car->type != TOBJ) error("obj-del: expected 1st argument to be object");
-  if (args->cdr->car->type != TSYM) error("obj-del: expected 2nd argument to be symbol");
+  if (args->car->type != TOBJ)
+    error("obj-del: expected 1st argument to be object");
+  if (args->cdr->car->type != TSYM)
+    error("obj-del: expected 2nd argument to be symbol");
 
   DEFINE3(root, o, k, v);
   *o = args->car;
@@ -1531,26 +1542,32 @@ static Val *prim_obj_del(void *root, Val **env, Val **list) {
 }
 
 static Val *prim_obj_proto(void *root, Val **env, Val **list) {
-  if (length(*list) != 1) error("obj-proto: expected exactly 1 args");
+  if (length(*list) != 1)
+    error("obj-proto: expected exactly 1 args");
   Val *args = eval_list(root, env, list);
-  if (args->car->type != TOBJ) error("obj-proto: expected 1st argument to be object");
+  if (args->car->type != TOBJ)
+    error("obj-proto: expected 1st argument to be object");
 
   return args->car->proto;
 }
 
 static Val *prim_obj_proto_set(void *root, Val **env, Val **list) {
-  if (length(*list) != 2) error("obj-proto-set!: expected exactly 2 args");
+  if (length(*list) != 2)
+    error("obj-proto-set!: expected exactly 2 args");
   Val *args = eval_list(root, env, list);
-  if (args->car->type != TOBJ) error("obj-proto-set!: expected 1st argument to be object");
+  if (args->car->type != TOBJ)
+    error("obj-proto-set!: expected 1st argument to be object");
 
   args->car->proto = args->cdr->car;
   return args->car;
 }
 
 static Val *prim_obj_to_alist(void *root, Val **env, Val **list) {
-  if (length(*list) != 1) error("obj->alist: expected exactly 1 arg");
+  if (length(*list) != 1)
+    error("obj->alist: expected exactly 1 arg");
   Val *args = eval_list(root, env, list);
-  if (args->car->type != TOBJ) error("obj->alist: expected 1st argument to be object");
+  if (args->car->type != TOBJ)
+    error("obj->alist: expected 1st argument to be object");
 
   return args->car->props;
 }
@@ -1736,7 +1753,6 @@ static Val *prim_trap_error(void *root, Val **env, Val **list) {
     *call = cons(root, fn, &Nil);
   }
   return eval(root, env, call);
-
 }
 
 // }}}
@@ -1831,7 +1847,6 @@ static Val *prim_open(void *root, Val **env, Val **list) {
   Val *values = eval_list(root, env, list);
   if (values->car->type != TSTR)
     error("open: 1st arg not string");
-
 
   // Check 2nd param (passed a mode to fopen(3))
   char *mode = "r";
@@ -2188,9 +2203,11 @@ static void define_primitives(void *root, Val **env) {
 
   // Linenoise
   add_primitive(root, env, "linenoise", prim_linenoise);
-  add_primitive(root, env, "linenoise-history-load", prim_linenoise_history_load);
+  add_primitive(root, env, "linenoise-history-load",
+                prim_linenoise_history_load);
   add_primitive(root, env, "linenoise-history-add", prim_linenoise_history_add);
-  add_primitive(root, env, "linenoise-history-save", prim_linenoise_history_save);
+  add_primitive(root, env, "linenoise-history-save",
+                prim_linenoise_history_save);
 }
 // }}}
 
@@ -2254,7 +2271,8 @@ Val *eval_input(void *root, Val **env, char *input) {
   return *val;
 }
 
-// Ran right after the event loop is start so that evaluated code in here runs in the context
+// Ran right after the event loop is start so that evaluated code in here runs
+// in the context
 // of a working event loop.
 // Call the `shi-main` method from the prelude at the end.
 static void shi_init_cb(struct ev_loop *loop, ev_timer *w, int revents) {
