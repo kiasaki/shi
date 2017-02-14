@@ -20,16 +20,13 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 
-#define EV_STANDALONE 1
-#ifndef SIGCHLD
-#define SIGCHLD SIGCLD
-#endif
-
 #include "vendor/linenoise.h"
 #include "vendor/pcg_basic.h"
 #include "vendor/libev/ev.h"
 
 static const char *VERSION = "0.1.0";
+
+// {{{ error
 
 // Globals
 static int error_depth = 0;
@@ -47,6 +44,8 @@ static __attribute((noreturn)) void error(char *error_v) {
   printf("unhandled error: %s\n", error_value);
   exit(1);
 }
+
+// }}}
 
 // {{{ type
 
@@ -2232,8 +2231,26 @@ void setup_repl(void *root, Val **env) {
   free(hist_path);
 }
 
+static void shi_init_cb(struct ev_loop *loop, ev_timer *w, int revents) {
+  (void)revents;
+  ev_timer_stop(loop, w);
+
+  void *root = NULL;
+  DEFINE2(root, env, main);
+  *env = (Val *)w->data;
+
+  // Read and evaluate prelude
+  char *prelude_contents = file_read_all("prelude.shi");
+  eval_input(root, env, prelude_contents);
+  free(prelude_contents);
+
+  *main = intern(root, "shi-main");
+  *main = cons(root, main, &Nil);
+  eval(root, env, main);
+}
+
 int main(int argc, char **argv) {
-  // Seed rand
+  // Seed random number generator
   pcg32_srandom(time(NULL) ^ (intptr_t)&printf, (intptr_t)&gc);
 
   // Debug flags
@@ -2261,29 +2278,15 @@ int main(int argc, char **argv) {
   *sh_args = reverse(*sh_args);
   add_variable(root, env, sh_args_sym, sh_args);
 
-  // Read and evaluate prelude
-  char *prelude_contents = file_read_all("prelude.shi");
-  eval_input(root, env, prelude_contents);
-  free(prelude_contents);
+  // Start event loop
+  struct ev_loop *loop = EV_DEFAULT;
 
-  // If given a file, read, eval, and exit
-  if (argc >= 2) {
-    char *file_contents = file_read_all(argv[1]);
-    eval_input(root, env, file_contents);
-    free(file_contents);
-    return 0;
-  }
+  ev_timer *shi_init_w = malloc(sizeof(ev_timer));
+  ev_timer_init(shi_init_w, shi_init_cb, 0., 0.);
+  shi_init_w->data = *env;
+  ev_timer_start(loop, shi_init_w);
 
-  // If stdin is a file (not terminal) read, and eval
-  if (!isatty(fileno(stdin))) {
-    char *stdin_contents = fd_read_all(stdin);
-    eval_input(root, env, stdin_contents);
-    free(stdin_contents);
-    return 0;
-  }
-
-  // Start REPL
-  setup_repl(root, env);
+  ev_run(loop, 0);
   return 0;
 }
 

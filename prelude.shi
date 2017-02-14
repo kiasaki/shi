@@ -526,6 +526,7 @@
   (close fd)
   contents)
 
+
 ; HTTP
 ; ==========================
 
@@ -669,3 +670,15 @@
 
 (defn http/head (srv path handler-fn)
   (http/add srv 'HEAD path handler-fn))
+
+
+; Shi Cli
+; ==========================
+
+(defn shi-main ()
+  (cond (>= (length *args*) 2)
+          (eval (read-sexp (read-all (second *args*))))
+        (not (isatty *stdin*))
+          (eval (read-sexp (read-all *stdin*)))
+        else
+          (println "REPL!")))
