@@ -29,9 +29,10 @@ static const char *VERSION = "0.1.0";
 // {{{ error
 
 // Globals
+#define MAX_ERROR_DEPTH 25
 static int error_depth = 0;
 static char *error_value;
-static jmp_buf error_jmp_env[10];
+static jmp_buf error_jmp_env[MAX_ERROR_DEPTH];
 
 static __attribute((noreturn)) void error(char *error_v) {
   error_value = malloc(sizeof(char *) * (strlen(error_v) + 1));
@@ -954,9 +955,11 @@ static Val *reader_expr(Reader *r, void *root) {
 
     // TODO cleanup
     char *err_text = "Don't know how to handle ";
-    char err_buf[strlen(err_text)];
-    strcpy(err_buf, err_text);
-    err_buf[strlen(err_text)] = c;
+    int err_text_len = strlen(err_text);
+    char err_buf[err_text_len+2];
+    strncpy(err_buf, err_text, err_text_len);
+    err_buf[err_text_len] = c;
+    err_buf[err_text_len+1] = '\0';
     error(err_buf);
   }
 }
@@ -1742,6 +1745,11 @@ static Val *prim_trap_error(void *root, Val **env, Val **list) {
   if ((*fn)->type != TFUN || (*error_fn)->type != TFUN)
     error("trap-error: both args must be functions");
 
+  // check that we have space to save env
+  if (error_depth >= MAX_ERROR_DEPTH) {
+    fprintf(stderr, "Max error depth reached. Check for nested `trap-error` calls.\n");
+    exit(1);
+  }
   int trapped = setjmp(error_jmp_env[error_depth++]);
   if (trapped != 0) {
     *call = make_string(root, error_value);
@@ -2280,7 +2288,7 @@ static void shi_init_cb(struct ev_loop *loop, ev_timer *w, int revents) {
   ev_timer_stop(loop, w);
 
   void *root = NULL;
-  DEFINE2(root, env, main);
+  DEFINE2(root, env, shi_main);
   *env = (Val *)w->data;
 
   // Read and evaluate prelude
@@ -2288,9 +2296,9 @@ static void shi_init_cb(struct ev_loop *loop, ev_timer *w, int revents) {
   eval_input(root, env, prelude_contents);
   free(prelude_contents);
 
-  *main = intern(root, "shi-main");
-  *main = cons(root, main, &Nil);
-  eval(root, env, main);
+  *shi_main = intern(root, "shi-main");
+  *shi_main = cons(root, shi_main, &Nil);
+  eval(root, env, shi_main);
 }
 
 int main(int argc, char **argv) {
