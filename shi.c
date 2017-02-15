@@ -137,9 +137,21 @@ static Val *Cparen = &(Val){TCPAREN, 0, {0}};
 static Val *Ccurly = &(Val){TCCURLY, 0, {0}};
 
 // The list containing all symbols. Such data structure is traditionally called
-// the "obarray", but I
-// avoid using it as a variable name as this is not an array but a list.
+// the "obarray", but I avoid using it as a variable name as this is not an
+// array but a list.
 static Val *Symbols;
+
+// }}}
+
+// {{{ types: ev
+
+typedef struct WatcherState {
+  void *root;
+  Val **env;
+  Val **callback;
+} WatcherState;
+
+static ev_watcher_list *ev_watchers = NULL;
 
 // }}}
 
@@ -165,33 +177,25 @@ static bool always_gc = false;
 static void gc(void *root);
 
 // Currently we are using Cheney's copying GC algorithm, with which the
-// available memory is split
-// into two halves and all objects are moved from one half to another every time
-// GC is invoked. That
-// means the address of the object keeps changing. If you take the address of an
-// object and keep it
-// in a C variable, dereferencing it could cause SEGV because the address
-// becomes invalid after GC
-// runs.
+// available memory is split into two halves and all objects are moved from one
+// half to another every time GC is invoked. That means the address of the
+// object keeps changing. If you take the address of an object and keep it in a
+// C variable, dereferencing it could cause SEGV because the address becomes
+// invalid after GC runs.
 //
 // In order to deal with that, all access from C to Lisp objects will go through
-// two levels of
-// pointer dereferences. The C local variable is pointing to a pointer on the C
-// stack, and the
-// pointer is pointing to the Lisp object. GC is aware of the pointers in the
-// stack and updates
-// their contents with the objects' new addresses when GC happens.
+// two levels of pointer dereferences. The C local variable is pointing to a
+// pointer on the C stack, and the pointer is pointing to the Lisp object. GC
+// is aware of the pointers in the stack and updates their contents with the
+// objects' new addresses when GC happens.
 //
 // The following is a macro to reserve the area in the C stack for the pointers.
-// The contents of
-// this area are considered to be GC root.
+// The contents of this area are considered to be GC root.
 //
 // Be careful not to bypass the two levels of pointer indirections. If you
-// create a direct pointer
-// to an object, it'll cause a subtle bug. Such code would work in most cases
-// but fails with SEGV if
-// GC happens during the execution of the code. Any code that allocates memory
-// may invoke GC.
+// create a direct pointer to an object, it'll cause a subtle bug. Such code
+// would work in most cases but fails with SEGV if GC happens during the
+// execution of the code. Any code that allocates memory may invoke GC.
 
 #define ROOT_END ((void *)-1)
 
@@ -298,31 +302,27 @@ static Val *alloc(void *root, int type, size_t size) {
 // {{{ gc
 
 // Cheney's algorithm uses two pointers to keep track of GC status. At first
-// both pointers point to
-// the beginning of the to-space. As GC progresses, they are moved towards the
-// end of the
-// to-space. The objects before "scan1" are the objects that are fully copied.
-// The objects between
-// "scan1" and "scan2" have already been copied, but may contain pointers to the
-// from-space. "scan2"
+// both pointers point to the beginning of the to-space. As GC progresses, they
+// are moved towards the end of the to-space. The objects before "scan1" are
+// the objects that are fully copied.  The objects between "scan1" and "scan2"
+// have already been copied, but may contain pointers to the from-space. "scan2"
 // points to the beginning of the free space.
 static Val *scan1;
 static Val *scan2;
 
 // Moves one object from the from-space to the to-space. Returns the object's
-// new address. If the
-// object has already been moved, does nothing but just returns the new address.
+// new address. If the object has already been moved, does nothing but just returns
+// the new address.
 static inline Val *forward(Val *obj) {
   // If the object's address is not in the from-space, the object is not managed
-  // by GC nor it
-  // has already been moved to the to-space.
+  // by GC nor it has already been moved to the to-space.
   ptrdiff_t offset = (uint8_t *)obj - (uint8_t *)from_space;
   if (offset < 0 || MEMORY_SIZE <= offset)
     return obj;
 
   // The pointer is pointing to the from-space, but the object there was a
-  // tombstone. Follow the
-  // forwarding pointer to find the new location of the object.
+  // tombstone. Follow the forwarding pointer to find the new location of
+  // the object.
   if (obj->type == TMOVED)
     return obj->moved;
 
@@ -332,18 +332,16 @@ static inline Val *forward(Val *obj) {
   scan2 = (Val *)((uint8_t *)scan2 + obj->size);
 
   // Put a tombstone at the location where the object used to occupy, so that
-  // the following call
-  // of forward() can find the object's new location.
+  // the following call of forward() can find the object's new location.
   obj->type = TMOVED;
   obj->moved = newloc;
   return newloc;
 }
 
 static void *alloc_semispace() {
-  // #include <sys/mman.h>
+  // return malloc(MEMORY_SIZE);
   return mmap(NULL, MEMORY_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON,
               -1, 0);
-  // return malloc(MEMORY_SIZE);
 }
 
 static char *pr_str(void *root, Val *);
@@ -351,12 +349,27 @@ static char *pr_str(void *root, Val *);
 // Copies the root objects.
 static void forward_root_objects(void *root) {
   Symbols = forward(Symbols);
+
+  // In `root` [0] it a pointer to the previous root, [n] is an object on the
+  // stack and [n+1] is the ROOT_END delimiter
   for (void **frame = root; frame; frame = *(void ***)frame) {
     for (int i = 1; frame[i] != ROOT_END; i++) {
       if (frame[i]) {
         frame[i] = forward(frame[i]);
       }
     }
+  }
+
+  // Persist/Forward watchers root objects
+  for (ev_watcher_list *w = ev_watchers; w != NULL; w = w->next) {
+    WatcherState *wdata = w->data;
+    void **root = wdata->root;
+    for (int i = 1; root[i] != ROOT_END; i++) {
+      if (root[i]) {
+        root[i] = forward(root[i]);
+      }
+    }
+    wdata->root = root;
   }
 }
 
@@ -377,10 +390,8 @@ static void gc(void *root) {
   // Copy the GC root objects first. This moves the pointer scan2.
   forward_root_objects(root);
 
-  // Copy the objects referenced by the GC root objects located between scan1
-  // and scan2. Once it's
-  // finished, all live objects (i.e. objects reachable from the root) will have
-  // been copied to
+  // Copy the objects referenced by the GC root objects located between scan1 and scan2. Once it's
+  // finished, all live objects (i.e. objects reachable from the root) will have been copied to
   // the to-space.
   while (scan1 < scan2) {
     switch (scan1->type) {
@@ -417,8 +428,8 @@ static void gc(void *root) {
   }
 
   // Finish up GC.
-  munmap(from_space, MEMORY_SIZE);
   // free(from_space);
+  munmap(from_space, MEMORY_SIZE);
   size_t old_nused = mem_nused;
   mem_nused = (size_t)((uint8_t *)scan1 - (uint8_t *)memory);
   if (debug_gc)
@@ -2287,6 +2298,9 @@ static void shi_init_cb(struct ev_loop *loop, ev_timer *w, int revents) {
   (void)revents;
   ev_timer_stop(loop, w);
 
+  // Defining `root` is dangerous as the next GC will wipe all that already on
+  // the stack from previous `root`s. But, since this is our entrypoint and
+  // that we have no good ways of relaying root to shi_init_cb, it's safe.
   void *root = NULL;
   DEFINE2(root, env, shi_main);
   *env = (Val *)w->data;

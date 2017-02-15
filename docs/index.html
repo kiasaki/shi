@@ -299,8 +299,12 @@
           <span>primitive</span>
         </header>
         <div class="bg-near-white code mid-gray pa3 mt3">
-          (fn (arg1 ...) body ...) <span class="light-silver">; list|sym -&gt; any =&gt; fn</span><br />
-          (fn (arg . rest) body ...) <span class="light-silver">; list|sym -&gt; any =&gt; fn</span>
+          (fn (arg1 ...) body ...)
+          <span class="light-silver">; list -&gt; any =&gt; fn</span><br />
+          (fn (arg . rest) body ...)
+          <span class="light-silver">; list -&gt; any =&gt; fn</span><br />
+          (fn args body ...)
+          <span class="light-silver">; sym -&gt; any =&gt; fn</span>
         </div>
         <p>
           Creates a new function. The 1st argument is the list of arguments the function will take.
