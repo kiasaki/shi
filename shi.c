@@ -146,12 +146,20 @@ static Val *Symbols;
 // {{{ types: ev
 
 typedef struct WatcherState {
+  int id;
+  int type;
   void *root;
-  Val **env;
-  Val **callback;
+  Val *env;
+  Val *callback;
 } WatcherState;
 
 static ev_watcher_list *ev_watchers = NULL;
+
+static int ev_next_id() {
+  static int watcher_id = 0;
+  watcher_id++;
+  return watcher_id;
+}
 
 // }}}
 
@@ -363,13 +371,8 @@ static void forward_root_objects(void *root) {
   // Persist/Forward watchers root objects
   for (ev_watcher_list *w = ev_watchers; w != NULL; w = w->next) {
     WatcherState *wdata = w->data;
-    void **root = wdata->root;
-    for (int i = 1; root[i] != ROOT_END; i++) {
-      if (root[i]) {
-        root[i] = forward(root[i]);
-      }
-    }
-    wdata->root = root;
+    wdata->env = forward(wdata->env);
+    wdata->callback = forward(wdata->callback);
   }
 }
 
@@ -1114,7 +1117,16 @@ static Val *eval(void *root, Val **env, Val **obj) {
     Val *bind = find(env, *obj);
     if (!bind) {
       // TODO append (*obj)->symv
-      error("eval: undefined symbol");
+
+      char *err_text = "eval: undefined symbol: ";
+      char *err_val = (*obj)->symv;
+      int err_text_len = strlen(err_text);
+      int err_val_len = strlen(err_val);
+      char err_buf[err_text_len+err_val_len+1];
+      strncpy(err_buf, err_text, err_text_len);
+      strncpy(&err_buf[err_text_len], err_val, err_val_len);
+      err_buf[err_text_len+err_val_len] = '\0';
+      error(err_buf);
     }
     return bind->cdr;
   }
@@ -2053,6 +2065,166 @@ static Val *prim_accept(void *root, Val **env, Val **list) {
 
 // }}}
 
+// {{{ primitives: ev
+
+static void ev_io_watcher_callback(struct ev_loop *loop, ev_io *w, int revents) {
+  (void)loop; (void)revents;
+  WatcherState *wdata = w->data;
+  void *root = NULL;
+  DEFINE2(root, env, callback);
+  *env = wdata->env;
+  *callback = wdata->callback;
+  apply_func(root, env, callback, &Nil);
+}
+
+static void ev_timer_watcher_callback(struct ev_loop *loop, ev_timer *w, int revents) {
+  (void)loop; (void)revents;
+  WatcherState *wdata = w->data;
+  void *root = NULL;
+  DEFINE2(root, env, callback);
+  *env = wdata->env;
+  *callback = wdata->callback;
+  apply_func(root, env, callback, &Nil);
+}
+
+static void ev_signal_watcher_callback(struct ev_loop *loop, ev_signal *w, int revents) {
+  (void)loop; (void)revents;
+  WatcherState *wdata = w->data;
+  void *root = NULL;
+  DEFINE2(root, env, callback);
+  *env = wdata->env;
+  *callback = wdata->callback;
+  apply_func(root, env, callback, &Nil);
+}
+
+// (ev-start type cb args*) -> int [wid]
+static Val *prim_ev_start(void *root, Val **env, Val **list) {
+  if (length(*list) < 2)
+    error("ev-start: not given at least 2 argument");
+
+  DEFINE4(root, values, type, cb, arg1);
+  *values = eval_list(root, env, list);
+  *type = (*values)->car;
+  *cb = (*values)->cdr->car;
+  if ((*type)->type != TINT)
+    error("ev-start: type arg not an int");
+  if ((*cb)->type != TFUN)
+    error("ev-start: callback arg not a function");
+
+#define ev_setup(T, ev_callback)                 \
+  T *w = malloc(sizeof(T));                      \
+  ev_init(w, (ev_callback));                     \
+  w->next = ev_watchers;                         \
+  ev_watchers = (ev_watcher_list *)w;            \
+  w->data = malloc(sizeof(WatcherState));        \
+  WatcherState *wdata = (WatcherState *)w->data; \
+  wdata->id = ev_next_id();                      \
+  wdata->type = (*type)->intv;                   \
+  wdata->root = root;                            \
+  wdata->env = *env;                             \
+  wdata->callback = *cb;
+
+  switch ((*type)->intv) {
+    case EV_STAT:
+      // TODO implement ev stat
+      error("ev-start: TODO");
+    case EV_READ:
+    case EV_WRITE: {
+      *arg1 = (*values)->cdr->cdr->car; // fd
+      if ((*arg1)->type != TINT)
+        error("ev-start: io watcher needs a file descriptor");
+
+      ev_setup(ev_io, ev_io_watcher_callback);
+      ev_io_set(w, (*arg1)->intv, wdata->type);
+      ev_io_start(EV_DEFAULT_ w);
+
+      return make_int(root, wdata->id);
+    }
+    case EV_TIMER: {
+      *arg1 = (*values)->cdr->cdr->car; // delay
+      if ((*arg1)->type != TINT)
+        error("ev-start: timer watcher needs a delay as int");
+
+      ev_setup(ev_timer, ev_timer_watcher_callback);
+      double delay = (double)(*arg1)->intv/1000.;
+      ev_timer_set(w, delay, delay);
+      ev_timer_start(EV_DEFAULT_ w);
+
+      return make_int(root, wdata->id);
+    }
+    case EV_SIGNAL: {
+      *arg1 = (*values)->cdr->cdr->car; // signal number
+      if ((*arg1)->type != TINT)
+        error("ev-start: signal watcher needs a signal number as integer");
+
+      ev_setup(ev_signal, ev_signal_watcher_callback);
+      ev_signal_set(w, (*arg1)->intv);
+      ev_signal_start(EV_DEFAULT_ w);
+
+      return make_int(root, wdata->id);
+    }
+    default:
+      error("ev-start: unknown watcher type");
+  }
+
+#undef ev_setup
+}
+
+// (ev-stop wid) -> t|nil
+static Val *prim_ev_stop(void *root, Val **env, Val **list) {
+  if (length(*list) != 1)
+    error("ev-stop: not given exactly 1 argument");
+
+  DEFINE1(root, values);
+  *values = eval_list(root, env, list);
+  if ((*values)->car->type != TINT)
+    error("ev-stop: 1st arg not int");
+
+  ev_watcher_list *prevw = NULL;
+  ev_watcher_list *w = ev_watchers;
+  while (w != NULL) {
+    WatcherState *wdata = w->data;
+    if (wdata->id == (*values)->car->intv) {
+      // Watcher found, stop, remove and free
+
+      // Stop
+      switch (wdata->type) {
+        case EV_STAT:
+          ev_stat_stop(EV_DEFAULT_ (ev_stat *)w);
+          break;
+        case EV_READ:
+        case EV_WRITE:
+          ev_io_stop(EV_DEFAULT_ (ev_io *)w);
+          break;
+        case EV_TIMER:
+          ev_timer_stop(EV_DEFAULT_ (ev_timer *)w);
+          break;
+        case EV_SIGNAL:
+          ev_signal_stop(EV_DEFAULT_ (ev_signal *)w);
+          break;
+        default:
+          error("ev-stop: unknown watcher type");
+      }
+
+      // Remove from global watchers list
+      if (prevw != NULL) {
+        prevw->next = w->next;
+      }
+
+      // Free heap allocated watcher data
+      free(wdata);
+      free(w);
+      return True;
+    }
+
+    prevw = w;
+    w = w->next;
+  }
+  return Nil;
+}
+
+// }}}
+
 // {{{ primitives: linenoise
 
 // (linenoise prompt)
@@ -2123,33 +2295,35 @@ static void add_primitive(void *root, Val **env, char *name, Primitive *fn) {
 }
 
 static void define_constants(void *root, Val **env) {
-  ADD_ROOT(root, 8);
+  DEFINE2(root, sym, val);
 
-  Val **tsym = (Val **)(root_ADD_ROOT_ + 1);
-  *tsym = intern(root, "t");
-  add_variable(root, env, tsym, &True);
+  *sym = intern(root, "t");
+  add_variable(root, env, sym, &True);
 
-  Val **nsym = (Val **)(root_ADD_ROOT_ + 2);
-  *nsym = intern(root, "nil");
-  add_variable(root, env, nsym, &Nil);
+  *sym = intern(root, "nil");
+  add_variable(root, env, sym, &Nil);
 
-  Val **system_version = (Val **)(root_ADD_ROOT_ + 3);
-  Val **system_version_val = (Val **)(root_ADD_ROOT_ + 4);
-  *system_version = intern(root, "*system-version*");
-  *system_version_val = make_string(root, (char *)VERSION);
-  add_variable(root, env, system_version, system_version_val);
+  *sym = intern(root, "*system-version*");
+  *val = make_string(root, (char *)VERSION);
+  add_variable(root, env, sym, val);
 
-  Val **pf_inet = (Val **)(root_ADD_ROOT_ + 5);
-  Val **pf_inet_val = (Val **)(root_ADD_ROOT_ + 6);
-  *pf_inet = intern(root, "PF_INET");
-  *pf_inet_val = make_int(root, PF_INET);
-  add_variable(root, env, pf_inet, pf_inet_val);
+#define defint(root, k, v)           \
+  *sym = intern(root, k);            \
+  *val = make_int(root, v);          \
+  add_variable(root, env, sym, val);
 
-  Val **sock_stream = (Val **)(root_ADD_ROOT_ + 7);
-  Val **sock_stream_val = (Val **)(root_ADD_ROOT_ + 8);
-  *sock_stream = intern(root, "SOCK_STREAM");
-  *sock_stream_val = make_int(root, SOCK_STREAM);
-  add_variable(root, env, sock_stream, sock_stream_val);
+  // Net
+  defint(root, "PF_INET", PF_INET);
+  defint(root, "SOCK_STREAM", SOCK_STREAM);
+
+  // Ev
+  defint(root, "EV_STAT", EV_STAT);
+  defint(root, "EV_READ", EV_READ);
+  defint(root, "EV_WRITE", EV_WRITE);
+  defint(root, "EV_TIMER", EV_TIMER);
+  defint(root, "EV_SIGNAL", EV_SIGNAL);
+
+#undef defint
 }
 
 static void define_primitives(void *root, Val **env) {
@@ -2219,6 +2393,10 @@ static void define_primitives(void *root, Val **env) {
   add_primitive(root, env, "bind-inet", prim_bind_inet);
   add_primitive(root, env, "listen", prim_listen);
   add_primitive(root, env, "accept", prim_accept);
+
+  // Ev
+  add_primitive(root, env, "ev-start", prim_ev_start);
+  add_primitive(root, env, "ev-stop", prim_ev_stop);
 
   // Linenoise
   add_primitive(root, env, "linenoise", prim_linenoise);

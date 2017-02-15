@@ -329,6 +329,7 @@ typedef struct ev_timer
   EV_WATCHER_TIME (ev_timer)
 
   ev_tstamp repeat; /* rw */
+  struct ev_watcher_list *next; /* private */
 } ev_timer;
 
 /* invoked at some specific time, possibly repeating at regular intervals (based on UTC) */

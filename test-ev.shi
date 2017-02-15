@@ -1,0 +1,12 @@
+(def wid nil)
+(def calls 0)
+
+(defn callback ()
+  (println "Wow, timers!")
+  (set calls (add1 calls))
+  (when (>= calls 5)
+    (ev-stop wid)))
+
+(set wid (ev-start EV_TIMER callback 1000))
+
+(println "Hello!")
