@@ -602,7 +602,7 @@
   (unless (str? host) (error "http/server: host not string"))
   (unless (int? port) (error "http/server: port not int"))
 
-  (def backlog-len 32)
+  (def backlog-len 128)
   (def listen-fd (socket PF_INET SOCK_STREAM 0))
   (bind-inet listen-fd host port)
   (listen listen-fd backlog-len)
@@ -619,6 +619,7 @@
     ; Read
     (set client-fd (accept (alist-get @srv 'listen-sock)))
     (when client-fd
+      ; TODO set client-fd to non-block
       (def req (list))
       (def res
         (list
@@ -645,6 +646,7 @@
         (write client-fd (alist-get res 'body)))
 
       (sleep 500)
+      ; TODO stop client watchers
       (close client-fd)))
   (close (alist-get @srv 'listen-sock)))
 

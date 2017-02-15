@@ -657,6 +657,14 @@ static Val *reverse(Val *p) {
   return ret;
 }
 
+int setnonblock(int fd) {
+  int flags;
+
+  flags = fcntl(fd, F_GETFL);
+  flags |= O_NONBLOCK;
+  return fcntl(fd, F_SETFL, flags);
+}
+
 // }}}
 
 // {{{ reader
@@ -1958,6 +1966,10 @@ static Val *prim_socket(void *root, Val **env, Val **list) {
     error("socket: error creating socket");
   }
 
+  if (setnonblock(fd) < 0) {
+    error("socket: error making socket non-blocking");
+  }
+
   return make_int(root, fd);
 }
 
@@ -2041,6 +2053,8 @@ static Val *prim_accept(void *root, Val **env, Val **list) {
     switch (errno) {
     case EINTR:
       return Nil; // accept interupted by a system call
+    case EWOULDBLOCK:
+      return Nil; // not ready to accept in a non-blocking way
     case EBADF:
       error("accept: given socket is not a valid file descriptor");
     case EINVAL:
