@@ -20,7 +20,9 @@
 #include <signal.h>
 #include <sys/socket.h>
 
+#include "prelude.inc"
 #include "../deps/libev/ev.h"
+#include "../deps/utf8.h"
 #include "../deps/linenoise.h"
 #include "../deps/pcg_basic.h"
 
@@ -50,7 +52,7 @@ static __attribute((noreturn)) void error(char *error_v) {
 
 // {{{ type
 
-// The Lisp object type
+// value types
 enum {
   // Regular values visible from the user
   TINT = 1,
@@ -74,57 +76,53 @@ enum {
   TCCURLY,
 };
 
-// Typedef for the primitive function
+// primitive fn typedef
 struct Val;
 typedef struct Val *Primitive(void *root, struct Val **env, struct Val **args);
 
-// The object type
 typedef struct Val {
-  // The first word of the object represents the type of the object. Any code
-  // that handles object
-  // needs to check its type first, then access the following union members.
+  // type is used to determine what value is represented in the union
   int type;
 
-  // The total size of the object, including "type" field, this field, the
-  // contents, and the
-  // padding at the end of the object.
+  // size is the total allocated size of the object. "type" + "size" +
+  // "contents" + extra padding
   int size;
 
-  // Valect values.
+  // value contents
   union {
-    // Int
+    // integer
     int intv;
-    // String
+    // string
     char strv[1];
-    // Cell
+    // list
     struct {
       struct Val *car;
       struct Val *cdr;
     };
-    // Symbol
+    // symbol
     char symv[1];
-    // Valect
-    // Linked list of association lists containing object properties.
+    // object
+    // linked list of association lists containing object properties.
     struct {
       struct Val *props;
       struct Val *proto;
     };
-    // Primitive
+    // primitive
     Primitive *priv;
-    // Function or Macro
+    // function or macro
     struct {
       struct Val *params;
       struct Val *body;
       struct Val *env;
     };
-    // Environment frame
-    // Linked list of association lists containing the mapping from symbols to
+    // environment frame
+    // linked list of association lists containing the mapping from symbols to
     // their value.
     struct {
       struct Val *vars;
       struct Val *up;
     };
-    // Forwarding pointer
+    // forwarding pointer (only exists during GC runs)
     void *moved;
   };
 } Val;
@@ -139,7 +137,7 @@ static Val *Ccurly = &(Val){TCCURLY, 0, {0}};
 // The list containing all symbols. Such data structure is traditionally called
 // the "obarray", but I avoid using it as a variable name as this is not an
 // array but a list.
-static Val *Symbols;
+static Val *symbols;
 
 // }}}
 
@@ -148,7 +146,6 @@ static Val *Symbols;
 typedef struct WatcherState {
   int id;
   int type;
-  void *root;
   Val *env;
   Val *callback;
 } WatcherState;
@@ -319,7 +316,8 @@ static Val *scan1;
 static Val *scan2;
 
 // Moves one object from the from-space to the to-space. Returns the object's
-// new address. If the object has already been moved, does nothing but just returns
+// new address. If the object has already been moved, does nothing but just
+// returns
 // the new address.
 static inline Val *forward(Val *obj) {
   // If the object's address is not in the from-space, the object is not managed
@@ -356,7 +354,7 @@ static char *pr_str(void *root, Val *);
 
 // Copies the root objects.
 static void forward_root_objects(void *root) {
-  Symbols = forward(Symbols);
+  symbols = forward(symbols);
 
   // In `root` [0] it a pointer to the previous root, [n] is an object on the
   // stack and [n+1] is the ROOT_END delimiter
@@ -393,8 +391,10 @@ static void gc(void *root) {
   // Copy the GC root objects first. This moves the pointer scan2.
   forward_root_objects(root);
 
-  // Copy the objects referenced by the GC root objects located between scan1 and scan2. Once it's
-  // finished, all live objects (i.e. objects reachable from the root) will have been copied to
+  // Copy the objects referenced by the GC root objects located between scan1
+  // and scan2. Once it's
+  // finished, all live objects (i.e. objects reachable from the root) will have
+  // been copied to
   // the to-space.
   while (scan1 < scan2) {
     switch (scan1->type) {
@@ -425,7 +425,7 @@ static void gc(void *root) {
       break;
     default:
       // TODO append scan1->type
-      error("Bug: copy: unknown type");
+      error("bug: copy: unknown type");
     }
     scan1 = (Val *)((uint8_t *)scan1 + scan1->size);
   }
@@ -514,12 +514,12 @@ static Val *acons(void *root, Val **x, Val **y, Val **a) {
 // May create a new symbol. If there's a symbol with the same name, it will not
 // create a new symbol but return the existing one.
 static Val *intern(void *root, char *name) {
-  for (Val *p = Symbols; p != Nil; p = p->cdr)
+  for (Val *p = symbols; p != Nil; p = p->cdr)
     if (strcmp(name, p->car->symv) == 0)
       return p->car;
   DEFINE1(root, sym);
   *sym = make_symbol(root, name);
-  Symbols = cons(root, sym, &Symbols);
+  symbols = cons(root, sym, &symbols);
   return *sym;
 }
 
@@ -534,44 +534,10 @@ static Val *obj_find(Val **obj, Val *sym) {
   return NULL;
 }
 
-static int unescape(char *dest, char *src) {
-  int i = 0;
-  while (*src) {
-    switch (*src) {
-    case '\n':
-      strcat(dest++, "\\n");
-      i += 2;
-      break;
-    case '\r':
-      strcat(dest++, "\\r");
-      i += 2;
-      break;
-    case '\t':
-      strcat(dest++, "\\t");
-      i += 2;
-      break;
-    case '\"':
-      strcat(dest++, "\\\"");
-      i += 2;
-      break;
-    case '\\':
-      strcat(dest++, "\\\\");
-      i += 2;
-      break;
-    default:
-      *dest = *src;
-      i++;
-      break;
-    }
-    src++;
-    dest++;
-    *dest = '\0';
-  }
-  return i;
-}
-
+#define PP_MAX_LEN 4096
 static char *pr_str(void *root, Val *obj) {
-  char *buf = malloc(sizeof(char) * 2048);
+
+  char *buf = malloc(sizeof(char) * 4096);
   char *s;
   Val *val;
   int len = 0;
@@ -599,7 +565,7 @@ static char *pr_str(void *root, Val *obj) {
     return buf;
   case TSTR:
     len += sprintf(&buf[len], "\"");
-    len += unescape(&buf[len], obj->strv);
+    len += u8_escape(&buf[len], PP_MAX_LEN-len, obj->strv, '"');
     len += sprintf(&buf[len], "\"");
     return buf;
   case TOBJ:
@@ -858,36 +824,19 @@ static Val *read_string(Reader *r, void *root) {
       error("String too long");
     }
     buf[len++] = reader_next(r);
-
-    // handle escapes
-    bool is_escape = buf[len - 2] == '\\';
-    char current_c = buf[len - 1];
-    if (is_escape && current_c == 'n') {
-      buf[len - 2] = '\n';
-      len--;
-    } else if (is_escape && current_c == 'r') {
-      buf[len - 2] = '\r';
-      len--;
-    } else if (is_escape && current_c == 't') {
-      buf[len - 2] = '\t';
-      len--;
-    } else if (is_escape && current_c == '"') {
-      buf[len - 2] = '\"';
-      len--;
-    } else if (is_escape && current_c == '\\') {
-      buf[len - 2] = '\\';
-      len--;
-    }
-    // TODO Handle hexadecial char exacpes (\x123)
   }
   buf[len] = '\0';
+
+  int buf_len = strlen(buf) + 1;
+  char unescaped_buf[buf_len];
+  u8_unescape(unescaped_buf, buf_len, buf);
 
   // consume closing "
   reader_next(r);
 
   // create str
   DEFINE1(root, tmp);
-  *tmp = make_string(root, buf);
+  *tmp = make_string(root, unescaped_buf);
   return *tmp;
 }
 
@@ -978,10 +927,10 @@ static Val *reader_expr(Reader *r, void *root) {
     // TODO cleanup
     char *err_text = "Don't know how to handle ";
     int err_text_len = strlen(err_text);
-    char err_buf[err_text_len+2];
+    char err_buf[err_text_len + 2];
     strncpy(err_buf, err_text, err_text_len);
     err_buf[err_text_len] = c;
-    err_buf[err_text_len+1] = '\0';
+    err_buf[err_text_len + 1] = '\0';
     error(err_buf);
   }
 }
@@ -1130,10 +1079,10 @@ static Val *eval(void *root, Val **env, Val **obj) {
       char *err_val = (*obj)->symv;
       int err_text_len = strlen(err_text);
       int err_val_len = strlen(err_val);
-      char err_buf[err_text_len+err_val_len+1];
+      char err_buf[err_text_len + err_val_len + 1];
       strncpy(err_buf, err_text, err_text_len);
       strncpy(&err_buf[err_text_len], err_val, err_val_len);
-      err_buf[err_text_len+err_val_len] = '\0';
+      err_buf[err_text_len + err_val_len] = '\0';
       error(err_buf);
     }
     return bind->cdr;
@@ -1778,7 +1727,8 @@ static Val *prim_trap_error(void *root, Val **env, Val **list) {
 
   // check that we have space to save env
   if (error_depth >= MAX_ERROR_DEPTH) {
-    fprintf(stderr, "Max error depth reached. Check for nested `trap-error` calls.\n");
+    fprintf(stderr,
+            "Max error depth reached. Check for nested `trap-error` calls.\n");
     exit(1);
   }
   int trapped = setjmp(error_jmp_env[error_depth++]);
@@ -2081,8 +2031,10 @@ static Val *prim_accept(void *root, Val **env, Val **list) {
 
 // {{{ primitives: ev
 
-static void ev_io_watcher_callback(struct ev_loop *loop, ev_io *w, int revents) {
-  (void)loop; (void)revents;
+static void ev_io_watcher_callback(struct ev_loop *loop, ev_io *w,
+                                   int revents) {
+  (void)loop;
+  (void)revents;
   WatcherState *wdata = w->data;
   void *root = NULL;
   DEFINE2(root, env, callback);
@@ -2091,8 +2043,10 @@ static void ev_io_watcher_callback(struct ev_loop *loop, ev_io *w, int revents) 
   apply_func(root, env, callback, &Nil);
 }
 
-static void ev_timer_watcher_callback(struct ev_loop *loop, ev_timer *w, int revents) {
-  (void)loop; (void)revents;
+static void ev_timer_watcher_callback(struct ev_loop *loop, ev_timer *w,
+                                      int revents) {
+  (void)loop;
+  (void)revents;
   WatcherState *wdata = w->data;
   void *root = NULL;
   DEFINE2(root, env, callback);
@@ -2101,8 +2055,10 @@ static void ev_timer_watcher_callback(struct ev_loop *loop, ev_timer *w, int rev
   apply_func(root, env, callback, &Nil);
 }
 
-static void ev_signal_watcher_callback(struct ev_loop *loop, ev_signal *w, int revents) {
-  (void)loop; (void)revents;
+static void ev_signal_watcher_callback(struct ev_loop *loop, ev_signal *w,
+                                       int revents) {
+  (void)loop;
+  (void)revents;
   WatcherState *wdata = w->data;
   void *root = NULL;
   DEFINE2(root, env, callback);
@@ -2125,60 +2081,59 @@ static Val *prim_ev_start(void *root, Val **env, Val **list) {
   if ((*cb)->type != TFUN)
     error("ev-start: callback arg not a function");
 
-#define ev_setup(T, ev_callback)                 \
-  T *w = malloc(sizeof(T));                      \
-  ev_init(w, (ev_callback));                     \
-  w->next = ev_watchers;                         \
-  ev_watchers = (ev_watcher_list *)w;            \
-  w->data = malloc(sizeof(WatcherState));        \
-  WatcherState *wdata = (WatcherState *)w->data; \
-  wdata->id = ev_next_id();                      \
-  wdata->type = (*type)->intv;                   \
-  wdata->root = root;                            \
-  wdata->env = *env;                             \
+#define ev_setup(T, ev_callback)                                               \
+  T *w = malloc(sizeof(T));                                                    \
+  ev_init(w, (ev_callback));                                                   \
+  w->next = ev_watchers;                                                       \
+  ev_watchers = (ev_watcher_list *)w;                                          \
+  w->data = malloc(sizeof(WatcherState));                                      \
+  WatcherState *wdata = (WatcherState *)w->data;                               \
+  wdata->id = ev_next_id();                                                    \
+  wdata->type = (*type)->intv;                                                 \
+  wdata->env = *env;                                                           \
   wdata->callback = *cb;
 
   switch ((*type)->intv) {
-    case EV_STAT:
-      // TODO implement ev stat
-      error("ev-start: TODO");
-    case EV_READ:
-    case EV_WRITE: {
-      *arg1 = (*values)->cdr->cdr->car; // fd
-      if ((*arg1)->type != TINT)
-        error("ev-start: io watcher needs a file descriptor");
+  case EV_STAT:
+    // TODO implement ev stat
+    error("ev-start: TODO");
+  case EV_READ:
+  case EV_WRITE: {
+    *arg1 = (*values)->cdr->cdr->car; // fd
+    if ((*arg1)->type != TINT)
+      error("ev-start: io watcher needs a file descriptor");
 
-      ev_setup(ev_io, ev_io_watcher_callback);
-      ev_io_set(w, (*arg1)->intv, wdata->type);
-      ev_io_start(EV_DEFAULT_ w);
+    ev_setup(ev_io, ev_io_watcher_callback);
+    ev_io_set(w, (*arg1)->intv, wdata->type);
+    ev_io_start(EV_DEFAULT_ w);
 
-      return make_int(root, wdata->id);
-    }
-    case EV_TIMER: {
-      *arg1 = (*values)->cdr->cdr->car; // delay
-      if ((*arg1)->type != TINT)
-        error("ev-start: timer watcher needs a delay as int");
+    return make_int(root, wdata->id);
+  }
+  case EV_TIMER: {
+    *arg1 = (*values)->cdr->cdr->car; // delay
+    if ((*arg1)->type != TINT)
+      error("ev-start: timer watcher needs a delay as int");
 
-      ev_setup(ev_timer, ev_timer_watcher_callback);
-      double delay = (double)(*arg1)->intv/1000.;
-      ev_timer_set(w, delay, delay);
-      ev_timer_start(EV_DEFAULT_ w);
+    ev_setup(ev_timer, ev_timer_watcher_callback);
+    double delay = (double)(*arg1)->intv / 1000.;
+    ev_timer_set(w, delay, delay);
+    ev_timer_start(EV_DEFAULT_ w);
 
-      return make_int(root, wdata->id);
-    }
-    case EV_SIGNAL: {
-      *arg1 = (*values)->cdr->cdr->car; // signal number
-      if ((*arg1)->type != TINT)
-        error("ev-start: signal watcher needs a signal number as integer");
+    return make_int(root, wdata->id);
+  }
+  case EV_SIGNAL: {
+    *arg1 = (*values)->cdr->cdr->car; // signal number
+    if ((*arg1)->type != TINT)
+      error("ev-start: signal watcher needs a signal number as integer");
 
-      ev_setup(ev_signal, ev_signal_watcher_callback);
-      ev_signal_set(w, (*arg1)->intv);
-      ev_signal_start(EV_DEFAULT_ w);
+    ev_setup(ev_signal, ev_signal_watcher_callback);
+    ev_signal_set(w, (*arg1)->intv);
+    ev_signal_start(EV_DEFAULT_ w);
 
-      return make_int(root, wdata->id);
-    }
-    default:
-      error("ev-start: unknown watcher type");
+    return make_int(root, wdata->id);
+  }
+  default:
+    error("ev-start: unknown watcher type");
   }
 
 #undef ev_setup
@@ -2203,21 +2158,21 @@ static Val *prim_ev_stop(void *root, Val **env, Val **list) {
 
       // Stop
       switch (wdata->type) {
-        case EV_STAT:
-          ev_stat_stop(EV_DEFAULT_ (ev_stat *)w);
-          break;
-        case EV_READ:
-        case EV_WRITE:
-          ev_io_stop(EV_DEFAULT_ (ev_io *)w);
-          break;
-        case EV_TIMER:
-          ev_timer_stop(EV_DEFAULT_ (ev_timer *)w);
-          break;
-        case EV_SIGNAL:
-          ev_signal_stop(EV_DEFAULT_ (ev_signal *)w);
-          break;
-        default:
-          error("ev-stop: unknown watcher type");
+      case EV_STAT:
+        ev_stat_stop(EV_DEFAULT_(ev_stat *) w);
+        break;
+      case EV_READ:
+      case EV_WRITE:
+        ev_io_stop(EV_DEFAULT_(ev_io *) w);
+        break;
+      case EV_TIMER:
+        ev_timer_stop(EV_DEFAULT_(ev_timer *) w);
+        break;
+      case EV_SIGNAL:
+        ev_signal_stop(EV_DEFAULT_(ev_signal *) w);
+        break;
+      default:
+        error("ev-stop: unknown watcher type");
       }
 
       // Remove from global watchers list
@@ -2321,9 +2276,9 @@ static void define_constants(void *root, Val **env) {
   *val = make_string(root, (char *)VERSION);
   add_variable(root, env, sym, val);
 
-#define defint(root, k, v)           \
-  *sym = intern(root, k);            \
-  *val = make_int(root, v);          \
+#define defint(root, k, v)                                                     \
+  *sym = intern(root, k);                                                      \
+  *val = make_int(root, v);                                                    \
   add_variable(root, env, sym, val);
 
   // Net
@@ -2430,58 +2385,6 @@ static bool get_env_flag(char *name) {
   return val && val[0];
 }
 
-char *file_read_all(char *path) {
-  FILE *fd = fopen(path, "r");
-  if (fd == NULL) {
-    // TODO append path
-    error("file_read_all: failed to open file");
-  }
-
-  // Goto EOF and record file size
-  fseek(fd, 0, SEEK_END);
-  int size = ftell(fd);
-  rewind(fd);
-
-  // Read all bytes
-  char *content = (char *)malloc(sizeof(char) * (size + 1));
-  int len = fread(content, 1, size, fd);
-  if (len < 0) {
-    perror("file_read_all");
-    exit(1);
-  }
-  content[len] = '\0';
-
-  fclose(fd);
-  return content;
-}
-
-Val *eval_reader(Reader *r, void *root, Val **env) {
-  DEFINE2(root, val, expr);
-  *val = Nil;
-
-  for (;;) {
-    *expr = reader_expr(r, root);
-    if (!*expr)
-      return *val;
-    if (*expr == Cparen)
-      error("Stray close parenthesis");
-    if (*expr == Ccurly)
-      error("Stray close curly bracket");
-    if (*expr == Dot)
-      error("Stray dot");
-    *val = eval(root, env, expr);
-  }
-}
-
-Val *eval_input(void *root, Val **env, char *input) {
-  DEFINE1(root, val);
-  Reader *r = reader_new(input);
-  *val = eval_reader(r, root, env);
-  reader_destroy(r);
-
-  return *val;
-}
-
 // Ran right after the event loop is start so that evaluated code in here runs
 // in the context
 // of a working event loop.
@@ -2494,13 +2397,16 @@ static void shi_init_cb(struct ev_loop *loop, ev_timer *w, int revents) {
   // the stack from previous `root`s. But, since this is our entrypoint and
   // that we have no good ways of relaying root to shi_init_cb, it's safe.
   void *root = NULL;
-  DEFINE2(root, env, shi_main);
+  DEFINE4(root, env, shi_main, read_sexp_sym, prelude);
   *env = (Val *)w->data;
 
   // Read and evaluate prelude
-  char *prelude_contents = file_read_all("prelude.shi");
-  eval_input(root, env, prelude_contents);
-  free(prelude_contents);
+  *read_sexp_sym = intern(root, "read-sexp");
+  *prelude = make_string(root, (char *)prelude_contents);
+  *prelude = cons(root, prelude, &Nil);
+  *prelude = cons(root, read_sexp_sym, prelude);
+  *prelude = eval(root, env, prelude);
+  eval(root, env, prelude);
 
   *shi_main = intern(root, "shi-main");
   *shi_main = cons(root, shi_main, &Nil);
@@ -2511,9 +2417,6 @@ int main(int argc, char **argv) {
   // Seed random number generator
   pcg32_srandom(time(NULL) ^ (intptr_t)&printf, (intptr_t)&gc);
 
-  // Setup lineoise
-  linenoiseHistorySetMaxLen(1000);
-
   // Debug flags
   debug_gc = get_env_flag("SHI_DEBUG_GC");
   always_gc = get_env_flag("SHI_ALWAYS_GC");
@@ -2522,7 +2425,7 @@ int main(int argc, char **argv) {
   memory = alloc_semispace();
 
   // Constants and primitives
-  Symbols = Nil;
+  symbols = Nil;
   void *root = NULL;
   DEFINE4(root, env, sh_args_sym, sh_args, sh_arg);
   *env = make_env(root, &Nil, &Nil);
@@ -2540,14 +2443,11 @@ int main(int argc, char **argv) {
   add_variable(root, env, sh_args_sym, sh_args);
 
   // Start event loop
-  struct ev_loop *loop = EV_DEFAULT;
-
   ev_timer *shi_init_w = malloc(sizeof(ev_timer));
   ev_timer_init(shi_init_w, shi_init_cb, 0., 0.);
   shi_init_w->data = *env;
-  ev_timer_start(loop, shi_init_w);
-
-  ev_run(loop, 0);
+  ev_timer_start(EV_DEFAULT_ shi_init_w);
+  ev_run(EV_DEFAULT_ 0);
   return 0;
 }
 

@@ -1,3 +1,4 @@
 bin/shi
 bin/shi.dSYM
 deps/libev/ev.o
+src/prelude.inc
