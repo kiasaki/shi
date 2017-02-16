@@ -682,6 +682,21 @@
 ; Shi Cli
 ; ==========================
 
+(defn expand-toplevel-sexp (ex)
+  (def expanded (macro-expand ex))
+  (if (and (list? expanded) (not (nil? expanded)) (eq? (first expanded) 'def))
+    (cons 'def-global (rest expanded))
+    expanded))
+
+(defn expand-toplevel* (exs)
+  (cons 'do (map expand-toplevel-sexp exs)))
+
+(defn expand-toplevel (ex)
+  (if (or (not (list? ex)) (nil? ex) (not (eq? (first ex) 'do)))
+    (expand-toplevel* (list ex))
+    (expand-toplevel* (rest ex))))
+
+
 (defn shi-repl ()
   (def hist-path (str (getenv "HOME") "/.shi-history"))
   (linenoise-history-load hist-path)
@@ -693,7 +708,7 @@
           (do
             (linenoise-history-add line)
             (linenoise-history-save hist-path)
-            (prn (eval (read-sexp line))))
+            (prn (eval (expand-toplevel (read-sexp line)))))
           (do
             (println "Bye!")
             (exit 0))))
@@ -702,8 +717,8 @@
 
 (defn shi-main ()
   (cond (>= (length *args*) 2)
-          (eval (read-sexp (read-all (second *args*))))
+          (eval (expand-toplevel (read-sexp (read-all (second *args*)))))
         (not (isatty *stdin*))
-          (eval (read-sexp (read-all-from *stdin*)))
+          (eval (expand-toplevel (read-sexp (read-all-from *stdin*))))
         else
           (shi-repl)))

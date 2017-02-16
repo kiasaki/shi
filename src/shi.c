@@ -26,6 +26,7 @@
 #include "../deps/utf8.h"
 #include "prelude.inc"
 
+#define OBJ_HM_SIZE 32
 static const char *VERSION = "0.1.0";
 
 // {{{ error
@@ -104,8 +105,8 @@ typedef struct Val {
     // object
     // linked list of association lists containing object properties.
     struct {
-      struct Val *props;
       struct Val *proto;
+      struct Val *props[];
     };
     // primitive
     Primitive *priv;
@@ -406,8 +407,10 @@ static void gc(void *root) {
       // object.
       break;
     case TOBJ:
-      scan1->props = forward(scan1->props);
       scan1->proto = forward(scan1->proto);
+      for (size_t i = 0; i < OBJ_HM_SIZE; i++) {
+        scan1->props[i] = forward(scan1->props[i]);
+      }
       break;
     case TCELL:
       scan1->car = forward(scan1->car);
@@ -470,11 +473,111 @@ static Val *make_symbol(void *root, char *name) {
   return sym;
 }
 
-struct Val *make_obj(void *root, Val **proto, Val **props) {
-  Val *r = alloc(root, TOBJ, sizeof(Val *) * 2);
-  r->props = *props;
+static Val *make_obj(void *root, Val **proto) {
+  Val *r = alloc(root, TOBJ, sizeof(Val *) * (OBJ_HM_SIZE + 1));
   r->proto = *proto;
+  for (size_t i = 0; i < OBJ_HM_SIZE; i++) {
+    r->props[i] = Nil;
+  }
   return r;
+}
+
+static size_t obj_hash(Val *key) {
+  u_int64_t hash;
+  size_t i = 0;
+
+  char *keyval;
+  if (key->type == TSTR) {
+    keyval = key->strv;
+  } else if (key->type == TSYM) {
+    keyval = key->symv;
+  } else if (key->type == TINT) {
+    char buf[11];
+    memset(buf, 0, 11);
+    sprintf(buf, "%d", key->intv);
+    keyval = buf;
+  } else {
+    error("obj_hash: key given is not sym, str, or int");
+  }
+
+  size_t keylen = strlen(keyval);
+
+  // http://en.wikipedia.org/wiki/Jenkins_hash_function
+  for (hash = i = 0; i < keylen; ++i) {
+    hash += keyval[i];
+    hash += (hash << 10);
+    hash ^= (hash >> 6);
+  }
+  hash += (hash << 3);
+  hash ^= (hash >> 11);
+  hash += (hash << 15);
+
+  return hash % OBJ_HM_SIZE;
+}
+
+static bool obj_valid_key(Val *key) {
+  size_t t = key->type;
+  return t == TSYM || t == TSTR || t == TINT;
+}
+
+static bool obj_key_eq(Val *a, Val *b) {
+  if (a->type == TSYM && b->type == TSYM) {
+    return a == b;
+  } else if (a->type == TINT && b->type == TINT) {
+    return a->intv == b->intv;
+  } else if (a->type == TSTR && b->type == TSTR) {
+    return strcmp(a->strv, b->strv) == 0;
+  } else {
+    return false;
+  }
+}
+
+// Gets the alist cell for k in obj (or NULL)
+// Take an already computed hash (used in obj_set)
+static Val *_obj_get(Val *obj, size_t h, Val *k) {
+  Val *list = obj->props[h];
+  for (Val *pair = list; pair != Nil; pair = pair->cdr) {
+    if (obj_key_eq(k, pair->car->car)) {
+      return pair->car;
+    }
+  }
+  return NULL;
+}
+
+// Gets the alist cell for k in obj (or NULL)
+static Val *obj_get(Val *obj, Val *k) {
+  return _obj_get(obj, obj_hash(k), k);
+}
+
+// Set object key to value
+static void obj_set(void *root, Val **obj, Val **key, Val **val) {
+  DEFINE2(root, list, pair);
+
+  size_t h = obj_hash(*key);
+  *pair = _obj_get(*obj, h, *key);
+  *list = (*obj)->props[h];
+
+  if (*pair == NULL) {
+    // Not found, insert
+    *pair = cons(root, key, val);
+    *pair = cons(root, pair, list);
+    (*obj)->props[h] = *pair;
+  } else {
+    // Found, set-cdr
+    (*pair)->cdr = *val;
+  }
+}
+
+// Remove a k/v from object
+static void obj_del(Val *obj, Val *k) {
+  size_t h = obj_hash(k);
+  Val **list = &obj->props[h];
+
+  for (Val **pair = list; (*pair) != Nil; *pair = (*pair)->cdr) {
+    if (obj_key_eq(k, (*pair)->car->car)) {
+      *pair = (*pair)->cdr;
+    }
+  }
 }
 
 static Val *make_primitive(void *root, Primitive *fn) {
@@ -523,17 +626,6 @@ static Val *intern(void *root, char *name) {
   return *sym;
 }
 
-static Val *obj_find(Val **obj, Val *sym) {
-  for (Val *p = *obj; p != Nil; p = p->proto) {
-    for (Val *cell = p->props; cell != Nil; cell = cell->cdr) {
-      Val *value = cell->car;
-      if (sym == value->car)
-        return value;
-    }
-  }
-  return NULL;
-}
-
 #define PP_MAX_LEN 4096
 static char *pr_str(void *root, Val *obj) {
 
@@ -569,7 +661,7 @@ static char *pr_str(void *root, Val *obj) {
     len += sprintf(&buf[len], "\"");
     return buf;
   case TOBJ:
-    val = obj_find(&obj, intern(root, "*object-name*"));
+    val = obj_get(obj, intern(root, "*object-name*"));
     if (val != NULL && val->cdr->type == TSTR) {
       len += sprintf(&buf[len], "<object %s %p>", val->cdr->strv, obj);
     } else {
@@ -1020,21 +1112,21 @@ static Val *find(Val **env, Val *sym) {
 }
 
 // Expands the given macro application form.
-static Val *macroexpand(void *root, Val **env, Val **obj) {
-  if ((*obj)->type != TCELL ||
-      ((*obj)->car->type != TSYM && (*obj)->car->type != TMAC)) {
-    return *obj;
+static Val *macroexpand(void *root, Val **env, Val **val) {
+  if ((*val)->type != TCELL ||
+      ((*val)->car->type != TSYM && (*val)->car->type != TMAC)) {
+    return *val;
   }
   DEFINE3(root, bind, macro, args);
-  if ((*obj)->car->type == TMAC) {
-    *macro = (*obj)->car;
+  if ((*val)->car->type == TMAC) {
+    *macro = (*val)->car;
   } else {
-    *bind = find(env, (*obj)->car);
+    *bind = find(env, (*val)->car);
     if (!*bind || (*bind)->cdr->type != TMAC)
-      return *obj;
+      return *val;
     *macro = (*bind)->cdr;
   }
-  *args = (*obj)->cdr;
+  *args = (*val)->cdr;
   return apply_func(root, env, macro, args);
 }
 
@@ -1159,9 +1251,23 @@ static Val *prim_def(void *root, Val **env, Val **list) {
   return *value;
 }
 
+static Val *prim_def_global(void *root, Val **env, Val **list) {
+  if (length(*list) != 2 || (*list)->car->type != TSYM)
+    error("Malformed def-global");
+  DEFINE2(root, sym, value);
+  *sym = (*list)->car;
+  *value = (*list)->cdr->car;
+  *value = eval(root, env, value);
+  while ((*env)->up != Nil) {
+    *env = (*env)->up;
+  }
+  add_variable(root, env, sym, value);
+  return *value;
+}
+
 // (set <symbol> expr) or (set (: obj key) val)
 static Val *prim_set(void *root, Val **env, Val **list) {
-  DEFINE4(root, bind, value, obj, obj_val);
+  DEFINE3(root, key, val, obj);
   if (length(*list) != 2)
     error("Malformed set");
 
@@ -1170,37 +1276,31 @@ static Val *prim_set(void *root, Val **env, Val **list) {
       (*list)->car->car->type == TSYM && (*list)->car->car->symv[0] == ':') {
     *obj = (*list)->car->cdr->car;
     *obj = eval(root, env, obj);
-    *bind = (*list)->car->cdr->cdr->car;
-    *bind = eval(root, env, bind);
-    *value = (*list)->cdr->car;
-    *value = eval(root, env, value);
+    *key = (*list)->car->cdr->cdr->car;
+    *key = eval(root, env, key);
+    *val = (*list)->cdr->car;
+    *val = eval(root, env, val);
 
     if ((*obj)->type != TOBJ)
       error("set: (:) 1st arg is not an object");
-    if ((*bind)->type != TSYM)
+    if ((*key)->type != TSYM)
       error("set: (:) 2nd arg is not a symbol");
 
-    *obj_val = obj_find(obj, *bind);
-    if (*obj_val == NULL) {
-      *obj_val = (*obj)->props; // props
-      (*obj)->props = acons(root, bind, value, obj_val);
-    } else {
-      (*obj_val)->cdr = *value;
-    }
+    obj_set(root, obj, key, val);
     return *obj;
   }
 
   if ((*list)->car->type != TSYM)
     error("Malformed set");
-  *bind = find(env, (*list)->car);
-  if (!*bind) {
+  *key = find(env, (*list)->car);
+  if (!*key) {
     // TODO append (*list)->car->symv
     error("Unbound variable");
   }
-  *value = (*list)->cdr->car;
-  *value = eval(root, env, value);
-  (*bind)->cdr = *value;
-  return *value;
+  *val = (*list)->cdr->car;
+  *val = eval(root, env, val);
+  (*key)->cdr = *val;
+  return *val;
 }
 
 // (pr-str expr)
@@ -1386,6 +1486,7 @@ static Val *prim_macro_expand(void *root, Val **env, Val **list) {
     error("Malformed macro-expand");
   DEFINE1(root, body);
   *body = (*list)->car;
+  *body = eval(root, env, body);
   return macroexpand(root, env, body);
 }
 
@@ -1430,11 +1531,17 @@ static Val *prim_obj(void *root, Val **env, Val **list) {
     }
   }
 
-  DEFINE2(root, proto, props);
+  DEFINE5(root, obj, key, val, proto, props);
   *proto = args->car;
   *props = args->cdr->car;
 
-  return make_obj(root, proto, props);
+  *obj = make_obj(root, proto);
+  for (Val *pair = *props; pair != Nil; pair = pair->cdr) {
+    *key = pair->car->car;
+    *val = pair->car->cdr;
+    obj_set(root, obj, key, val);
+  }
+  return *obj;
 }
 
 static Val *prim_obj_get(void *root, Val **env, Val **list) {
@@ -1449,7 +1556,7 @@ static Val *prim_obj_get(void *root, Val **env, Val **list) {
   DEFINE3(root, o, k, value);
   *o = args->car;
   *k = args->cdr->car;
-  *value = obj_find(o, *k);
+  *value = obj_get(*o, *k);
   if (*value == NULL) {
     // TODO append args->cdr->car->symv
     error("obj-get: unbound symbol");
@@ -1460,26 +1567,20 @@ static Val *prim_obj_get(void *root, Val **env, Val **list) {
 
 static Val *prim_obj_set(void *root, Val **env, Val **list) {
   if (length(*list) != 3)
-    error("obj-set: expected exactly 2 args");
+    error("obj-set: expected exactly 3 args");
   Val *args = eval_list(root, env, list);
   if (args->car->type != TOBJ)
     error("obj-set: expected 1st argument to be object");
-  if (args->cdr->car->type != TSYM)
-    error("obj-set: expected 2nd argument to be symbol");
+  if (obj_valid_key(args->cdr->car))
+    error("obj-set: expected 2nd argument to be valid object key");
 
-  DEFINE4(root, o, k, v, value);
-  *o = args->car;
-  *k = args->cdr->car;
-  *v = args->cdr->cdr->car;
-  *value = obj_find(o, *k);
-  if (*value == NULL) {
-    *value = (*o)->props; // props
-    (*o)->props = acons(root, k, v, value);
-  } else {
-    (*value)->cdr = *v;
-  }
+  DEFINE3(root, obj, key, val);
+  *obj = args->car;
+  *key = args->cdr->car;
+  *val = args->cdr->cdr->car;
+  obj_set(root, obj, key, val);
 
-  return *o;
+  return *obj;
 }
 
 static Val *prim_obj_del(void *root, Val **env, Val **list) {
@@ -1488,21 +1589,14 @@ static Val *prim_obj_del(void *root, Val **env, Val **list) {
   Val *args = eval_list(root, env, list);
   if (args->car->type != TOBJ)
     error("obj-del: expected 1st argument to be object");
-  if (args->cdr->car->type != TSYM)
-    error("obj-del: expected 2nd argument to be symbol");
+  if (obj_valid_key(args->cdr->car))
+    error("obj-del: expected 2nd argument to be valid object key");
 
-  DEFINE3(root, o, k, v);
-  *o = args->car;
-  *k = args->cdr->car;
-  *v = args->cdr->cdr->car;
+  Val *obj = args->car;
+  Val *key = args->cdr->car;
+  obj_del(obj, key);
 
-  for (Val **i = &(*o)->props; *i != Nil; i = &(*i)->cdr) {
-    if ((*i)->car->car == *k) {
-      *i = (*i)->cdr;
-    }
-  }
-
-  return *o;
+  return obj;
 }
 
 static Val *prim_obj_proto(void *root, Val **env, Val **list) {
@@ -1533,7 +1627,17 @@ static Val *prim_obj_to_alist(void *root, Val **env, Val **list) {
   if (args->car->type != TOBJ)
     error("obj->alist: expected 1st argument to be object");
 
-  return args->car->props;
+  DEFINE2(root, alist, pair);
+  *alist = Nil;
+
+  for (size_t i = 0; i < OBJ_HM_SIZE; i++) {
+    for (Val *l = args->car->props[i]; l != Nil; l = l->cdr) {
+      *pair = l->car;
+      *alist = cons(root, pair, alist);
+    }
+  }
+
+  return *alist;
 }
 
 // }}}
@@ -2289,6 +2393,7 @@ static void define_primitives(void *root, Val **env) {
 
   // Language
   add_primitive(root, env, "def", prim_def);
+  add_primitive(root, env, "def-global", prim_def_global);
   add_primitive(root, env, "set", prim_set);
   add_primitive(root, env, "fn", prim_fn);
   add_primitive(root, env, "if", prim_if);
