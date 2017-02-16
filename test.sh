@@ -10,7 +10,9 @@ function fail() {
 }
 
 function do_run() {
-  error=$(echo "$3" | ./bin/shi 2>&1 > /dev/null)
+  error=$(echo "(prn (do 
+  $3
+  ))" | ./bin/shi 2>&1 > /dev/null)
   if [ -n "$error" ]; then
     echo FAILED
     fail "$error"

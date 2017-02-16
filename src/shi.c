@@ -20,11 +20,11 @@
 #include <signal.h>
 #include <sys/socket.h>
 
-#include "prelude.inc"
 #include "../deps/libev/ev.h"
-#include "../deps/utf8.h"
 #include "../deps/linenoise.h"
 #include "../deps/pcg_basic.h"
+#include "../deps/utf8.h"
+#include "prelude.inc"
 
 static const char *VERSION = "0.1.0";
 
@@ -565,7 +565,7 @@ static char *pr_str(void *root, Val *obj) {
     return buf;
   case TSTR:
     len += sprintf(&buf[len], "\"");
-    len += u8_escape(&buf[len], PP_MAX_LEN-len, obj->strv, '"');
+    len += u8_escape(&buf[len], PP_MAX_LEN - len, obj->strv, '"');
     len += sprintf(&buf[len], "\"");
     return buf;
   case TOBJ:
@@ -1255,15 +1255,33 @@ static Val *prim_type(void *root, Val **env, Val **list) {
   char *name;
 
   switch (values->car->type) {
-  case TTRUE: name = "true"; break;
-  case TNIL: name = "nil"; break;
-  case TINT: name = "int"; break;
-  case TSTR: name = "str"; break;
-  case TSYM: name = "sym"; break;
-  case TOBJ: name = "obj"; break;
-  case TPRI: name = "prim"; break;
-  case TFUN: name = "fn"; break;
-  case TMAC: name = "macro"; break;
+  case TTRUE:
+    name = "true";
+    break;
+  case TNIL:
+    name = "nil";
+    break;
+  case TINT:
+    name = "int";
+    break;
+  case TSTR:
+    name = "str";
+    break;
+  case TSYM:
+    name = "sym";
+    break;
+  case TOBJ:
+    name = "obj";
+    break;
+  case TPRI:
+    name = "prim";
+    break;
+  case TFUN:
+    name = "fn";
+    break;
+  case TMAC:
+    name = "macro";
+    break;
   case TCELL:
     if (values->car->cdr != Nil && values->car->cdr->type != TCELL) {
       name = "cons";
@@ -1279,6 +1297,22 @@ static Val *prim_type(void *root, Val **env, Val **list) {
   DEFINE1(root, k);
   *k = intern(root, name);
   return *k;
+}
+
+// (apply fn args)
+static Val *prim_apply(void *root, Val **env, Val **list) {
+  if (length(*list) != 2)
+    error("apply: not given exactly 2 args");
+  DEFINE2(root, fn, args);
+  *fn = (*list)->car;
+  *fn = eval(root, env, fn);
+
+  *args = (*list)->cdr->car;
+  *args = eval(root, env, args);
+  if ((*args)->type != TCELL && *args != Nil)
+    error("apply: 2nd argument is not a list");
+
+  return apply(root, env, fn, args, false);
 }
 
 // (eval expr)
@@ -2261,6 +2295,7 @@ static void define_primitives(void *root, Val **env) {
   add_primitive(root, env, "do", prim_do);
   add_primitive(root, env, "while", prim_while);
   add_primitive(root, env, "eq?", prim_eq);
+  add_primitive(root, env, "apply", prim_apply);
   add_primitive(root, env, "type", prim_type);
   add_primitive(root, env, "eval", prim_eval);
   add_primitive(root, env, "read-sexp", prim_read_sexp);

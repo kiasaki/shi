@@ -24,9 +24,6 @@
     (list 'def name (list 'obj proto props))
     (list 'set (list ': name ''*object-name*) (list 'sym->str (list 'quote name))))))
 
-(defmacro apply (f args)
-  (list 'eval (list 'cons f args)))
-
 ; Types
 ; ==========================
 
@@ -420,7 +417,8 @@
 (defn extend colls
   (cond (empty? colls) nil
         (list? (first colls))
-          (apply list-extend colls)
+          (do (prn list-extend) (prn colls)
+          (apply list-extend colls))
         (error "extend: not a collection")))
 
 ; Syntax (suite)
