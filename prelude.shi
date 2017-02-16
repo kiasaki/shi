@@ -24,6 +24,9 @@
     (list 'def name (list 'obj proto props))
     (list 'set (list ': name ''*object-name*) (list 'sym->str (list 'quote name))))))
 
+(defmacro apply (f args)
+  (list 'eval (list 'cons f args)))
+
 ; Types
 ; ==========================
 

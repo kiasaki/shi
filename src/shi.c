@@ -766,29 +766,11 @@ static Val *reader_alist(Reader *r, void *root) {
 }
 
 // 'def -> (quote def)
-static Val *read_quote(Reader *r, void *root) {
-  DEFINE2(root, sym, tmp);
-  *sym = intern(root, "quote");
-  *tmp = reader_expr(r, root);
-  *tmp = cons(root, tmp, &Nil);
-  *tmp = cons(root, sym, tmp);
-  return *tmp;
-}
-
 // `(list a) -> (quasiquote (list a))
-static Val *read_quasiquote(Reader *r, void *root) {
-  DEFINE2(root, sym, tmp);
-  *sym = intern(root, "quasiquote");
-  *tmp = reader_expr(r, root);
-  *tmp = cons(root, tmp, &Nil);
-  *tmp = cons(root, sym, tmp);
-  return *tmp;
-}
-
 // @b -> (unbox b)
-static Val *read_unbox(Reader *r, void *root) {
+static Val *read_special(Reader *r, void *root, char *name) {
   DEFINE2(root, sym, tmp);
-  *sym = intern(root, "unbox");
+  *sym = intern(root, name);
   *tmp = reader_expr(r, root);
   *tmp = cons(root, tmp, &Nil);
   *tmp = cons(root, sym, tmp);
@@ -907,14 +889,14 @@ static Val *reader_expr(Reader *r, void *root) {
       return Ccurly;
     if (c == '.')
       return Dot;
-    if (c == '\'')
-      return read_quote(r, root);
-    if (c == '`')
-      return read_quasiquote(r, root);
-    if (c == ',')
-      return read_unquote(r, root);
     if (c == '@')
-      return read_unbox(r, root);
+      return read_special(r, root, "unbox");
+    if (c == '\'')
+      return read_special(r, root, "quote");
+    if (c == '`')
+      return read_special(r, root, "quasiquote");
+    if (c == ',') // handle ,@ too
+      return read_unquote(r, root);
     if (c == '"')
       return read_string(r, root);
     if (isdigit(c))
@@ -1073,8 +1055,7 @@ static Val *eval(void *root, Val **env, Val **obj) {
     // Variable
     Val *bind = find(env, *obj);
     if (!bind) {
-      // TODO append (*obj)->symv
-
+      // TODO clean up string messing
       char *err_text = "eval: undefined symbol: ";
       char *err_val = (*obj)->symv;
       int err_text_len = strlen(err_text);
@@ -1148,9 +1129,9 @@ static Val *handle_function(void *root, Val **env, Val **list, int type) {
   if (p->type != TSYM) { // but allow a single symbol to be params
     for (; p->type == TCELL; p = p->cdr)
       if (p->car->type != TSYM)
-        error("Parameter must be a symbol");
+        error("fn|macro: arg list must contain only symbols");
     if (p != Nil && p->type != TSYM)
-      error("Parameter must be a symbol");
+      error("fn|macro: arg list must contain only symbols");
   }
 
   return make_function(root, env, type, params, body);
@@ -1265,64 +1246,30 @@ static Val *prim_eq(void *root, Val **env, Val **list) {
   return values->car == values->cdr->car ? True : Nil;
 }
 
-// (apply fn args)
-static Val *prim_apply(void *root, Val **env, Val **list) {
-  if (length(*list) != 2)
-    error("apply: not given exactly 2 args");
-  DEFINE2(root, fn, args);
-  *fn = (*list)->car;
-  *fn = eval(root, env, fn);
-
-  *args = (*list)->cdr->car;
-  *args = eval(root, env, args);
-  if ((*args)->type != TCELL && *args != Nil)
-    error("apply: 2nd argument is not a list");
-
-  return apply(root, env, fn, args, false);
-}
-
 // (type expr)
 static Val *prim_type(void *root, Val **env, Val **list) {
   if (length(*list) != 1)
-    error("Malformed type");
+    error("type: not given exactly 1 argument");
   Val *values = eval_list(root, env, list);
 
   char *name;
 
   switch (values->car->type) {
-  case TTRUE:
-    name = "true";
-    break;
-  case TNIL:
-    name = "nil";
-    break;
-  case TINT:
-    name = "int";
-    break;
-  case TSTR:
-    name = "str";
-    break;
+  case TTRUE: name = "true"; break;
+  case TNIL: name = "nil"; break;
+  case TINT: name = "int"; break;
+  case TSTR: name = "str"; break;
+  case TSYM: name = "sym"; break;
+  case TOBJ: name = "obj"; break;
+  case TPRI: name = "prim"; break;
+  case TFUN: name = "fn"; break;
+  case TMAC: name = "macro"; break;
   case TCELL:
     if (values->car->cdr != Nil && values->car->cdr->type != TCELL) {
       name = "cons";
     } else {
       name = "list";
     }
-    break;
-  case TSYM:
-    name = "sym";
-    break;
-  case TOBJ:
-    name = "obj";
-    break;
-  case TPRI:
-    name = "prim";
-    break;
-  case TFUN:
-    name = "fn";
-    break;
-  case TMAC:
-    name = "macro";
     break;
   default:
     // TODO append values->car->type
@@ -2314,7 +2261,6 @@ static void define_primitives(void *root, Val **env) {
   add_primitive(root, env, "do", prim_do);
   add_primitive(root, env, "while", prim_while);
   add_primitive(root, env, "eq?", prim_eq);
-  add_primitive(root, env, "apply", prim_apply);
   add_primitive(root, env, "type", prim_type);
   add_primitive(root, env, "eval", prim_eval);
   add_primitive(root, env, "read-sexp", prim_read_sexp);
