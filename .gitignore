@@ -1,3 +1,3 @@
-shi
-shi.dSYM
-ev.o
+bin/shi
+bin/shi.dSYM
+deps/libev/ev.o

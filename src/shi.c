@@ -20,9 +20,9 @@
 #include <signal.h>
 #include <sys/socket.h>
 
-#include "vendor/libev/ev.h"
-#include "vendor/linenoise.h"
-#include "vendor/pcg_basic.h"
+#include "../deps/libev/ev.h"
+#include "../deps/linenoise.h"
+#include "../deps/pcg_basic.h"
 
 static const char *VERSION = "0.1.0";
 

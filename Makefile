@@ -4,18 +4,18 @@ CFLAGS=-g -Os -W -Wall
 
 .PHONY: clean test
 
-shi: shi.c vendor/*.c ev.o
-	$(CC) $(CFLAGS) -o shi shi.c vendor/linenoise.c vendor/pcg_basic.c ev.o
+shi: src/shi.c deps/*.c deps/libev/ev.o
+	$(CC) $(CFLAGS) -o bin/shi src/shi.c deps/linenoise.c deps/pcg_basic.c deps/libev/ev.o
 
-ev.o: vendor/libev/*.c vendor/libev/*.h
-	$(CC) -W -DEV_STANDALONE=1 -o ev.o -c vendor/libev/ev.c
+deps/libev/ev.o: deps/libev/*.c deps/libev/*.h
+	$(CC) -W -DEV_STANDALONE=1 -o deps/libev/ev.o -c deps/libev/ev.c
 
 clean:
-	rm -f shi ev.o *~
+	rm -f bin/shi bin/shi.dSYM deps/libev/ev.o *~
 
 test: shi
 	@./test.sh
 
 format:
-	clang-format shi.c >shi.c.new
-	mv shi.c.new shi.c
+	clang-format src/shi.c >src/shi.c.new
+	mv src/shi.c.new src/shi.c
