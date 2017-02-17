@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-set -e
 
 filter="$1"
 
@@ -111,7 +110,7 @@ run eq? '()' "(eq? 'foo 'bar)"
 run eq? '()' "(eq? + 'bar)"
 
 # gensym
-run gensym G__0 '(gensym)'
+run gensym 'G__4' '(gensym)'
 run gensym '()' "(eq? (gensym) 'G__0)"
 run gensym '()' '(eq? (gensym) (gensym))'
 run gensym t '((fn (x) (eq? x x)) (gensym))'
@@ -164,7 +163,7 @@ run macro 7 '(def seven (macro () 7)) ((fn () (seven)))'
 run macro-expand '(if (= x 0) (print x))' "
   (def list (fn (x . y) (cons x y)))
   (def if-zero (macro (x then) (list 'if (list '= x 0) then)))
-  (macro-expand (if-zero x (print x)))"
+  (macro-expand '(if-zero x (print x)))"
 
 # sum from 0 to 10
 run recursion 55 '(def f (fn (x) (if (= x 0) 0 (+ (f (+ x -1)) x)))) (f 10)'

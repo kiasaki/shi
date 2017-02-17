@@ -6,7 +6,6 @@
 
 - Async I/O
 - Async Net/Socket
-- Event Loop
 - Module System
 
 ### Other

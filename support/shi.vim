@@ -15,7 +15,7 @@ syntax match shiSymbol "\<\k\+\>"
 
 " builtin
 syntax keyword shiBuiltin macro
-syntax keyword shiBuiltin def
+syntax keyword shiBuiltin def def-global
 syntax keyword shiBuiltin set
 syntax keyword shiBuiltin fn
 syntax keyword shiBuiltin if cond
@@ -25,6 +25,7 @@ syntax keyword shiBuiltin defn defmacro defobj new super
 syntax keyword shiBuiltin let
 syntax keyword shiBuiltin self
 syntax keyword shiBuiltin else
+syntax keyword shiBuiltin module import
 
 " builtin operators
 syntax keyword shiBuiltin "+"

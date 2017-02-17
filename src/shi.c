@@ -1476,6 +1476,19 @@ static Val *prim_read_sexp(void *root, Val **env, Val **list) {
   }
 }
 
+// (sym str)
+static Val *prim_sym(void *root, Val **env, Val **list) {
+  if (length(*list) != 1)
+    error("sym: exactly 1 param required");
+  DEFINE1(root, str);
+  *str = (*list)->car;
+  *str = eval(root, env, str);
+  if ((*str)->type != TSTR)
+    error("sym: 1st arg is not a string");
+
+  return intern(root, (*str)->strv);
+}
+
 // }}}
 
 // {{{ primitives: marco
@@ -2408,6 +2421,7 @@ static void define_primitives(void *root, Val **env) {
   add_primitive(root, env, "type", prim_type);
   add_primitive(root, env, "eval", prim_eval);
   add_primitive(root, env, "read-sexp", prim_read_sexp);
+  add_primitive(root, env, "sym", prim_sym);
 
   // Macro
   add_primitive(root, env, "quote", prim_quote);

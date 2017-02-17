@@ -19,10 +19,6 @@
 ; Types
 ; ==========================
 
-; nil - Primitive
-; t - Primitive
-; type - Primitive
-
 (defn true? (x)
   (eq? (type x) 'true))
 (defn nil? (x)
@@ -51,8 +47,6 @@
 ; Conditionals
 ; ==========================
 
-; eq? - Primitive
-
 (def cond if)
 (def else t)
 
@@ -67,12 +61,6 @@
 
 ; Lists
 ; ==========================
-
-; cons - Primitive
-; car - Primitive
-; cdr - Primitive
-; set-car! - Primitive
-; while - Primitive
 
 (def first car)
 (def rest cdr)
@@ -409,8 +397,7 @@
 (defn extend colls
   (cond (empty? colls) nil
         (list? (first colls))
-          (do (prn list-extend) (prn colls)
-          (apply list-extend colls))
+          (apply list-extend colls)
         (error "extend: not a collection")))
 
 ; Syntax (suite)
@@ -474,17 +461,6 @@
 
 ; IO
 ; ==========================
-
-; pr-str - Primitive
-; open - Primitive
-; close - Primitive
-; write - Primitive
-; read - Primitive
-; sleep - Primitive
-; exit - Primitive
-; TODO getenv - Primitive
-; TODO error - Primitive
-; TODO trap-error - Primitive
 
 (def *stdin* 0)
 (def *stdout* 1)
@@ -670,6 +646,27 @@
 (defn http/head (srv path handler-fn)
   (http/add srv 'HEAD path handler-fn))
 
+; Modules
+; ==========================
+
+(defmacro module (name)
+  (list 'def '*module* (list 'quote name)))
+
+(defmacro import (name)
+  ; split name on /
+  ; loop on all root env bindings
+  ;   when substring matches
+  ;   def as (sym (str-join "/" (or alias (last name-parts)) binding-name))
+  ;   when alias == "." def simply as `binding-name`
+  ; optionally retrict imports to what is in `names`
+  nil)
+
+(defmacro def-export (k v)
+  `(do
+    (def k v)
+    (def-global ,(sym (str (sym->str *module*) "/" (sym->str k))) v)))
+
+(module global)
 
 ; Shi Cli
 ; ==========================
@@ -677,7 +674,7 @@
 (defn expand-toplevel-sexp (ex)
   (def expanded (macro-expand ex))
   (if (and (list? expanded) (not (nil? expanded)) (eq? (first expanded) 'def))
-    (cons 'def-global (rest expanded))
+    (cons 'def-export (rest expanded))
     expanded))
 
 (defn expand-toplevel* (exs)
