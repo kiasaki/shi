@@ -1,15 +1,7 @@
 ; Syntax
 ; ==========================
 
-; quote - Primitive
-; gensym - Primitive
-; macro - Primitive
-; macro-expand - Primitive
-; def - Primitive
-; set - Primitive
-; fn - Primitive
-; if - Primitive
-; do - Primitive
+(obj-set *env* '*object-name* "Env")
 
 (def list (fn xs xs))
 

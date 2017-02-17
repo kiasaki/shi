@@ -64,7 +64,6 @@ enum {
   TPRI,
   TFUN,
   TMAC,
-  TENV,
 
   // Intermediary value only present during GC, points to obj in new semispace
   TMOVED,
@@ -115,13 +114,6 @@ typedef struct Val {
       struct Val *params;
       struct Val *body;
       struct Val *env;
-    };
-    // environment frame
-    // linked list of association lists containing the mapping from symbols to
-    // their value.
-    struct {
-      struct Val *vars;
-      struct Val *up;
     };
     // forwarding pointer (only exists during GC runs)
     void *moved;
@@ -422,10 +414,6 @@ static void gc(void *root) {
       scan1->body = forward(scan1->body);
       scan1->env = forward(scan1->env);
       break;
-    case TENV:
-      scan1->vars = forward(scan1->vars);
-      scan1->up = forward(scan1->up);
-      break;
     default:
       // TODO append scan1->type
       error("bug: copy: unknown type");
@@ -454,17 +442,10 @@ static Val *make_int(void *root, int value) {
   return r;
 }
 
-static Val *make_string(void *root, char *value) {
+static Val *make_str(void *root, char *value) {
   Val *str = alloc(root, TSTR, strlen(value) + 1);
   strcpy(str->strv, value);
   return str;
-}
-
-static Val *cons(void *root, Val **car, Val **cdr) {
-  Val *cell = alloc(root, TCELL, sizeof(Val *) * 2);
-  cell->car = *car;
-  cell->cdr = *cdr;
-  return cell;
 }
 
 static Val *make_symbol(void *root, char *name) {
@@ -473,6 +454,49 @@ static Val *make_symbol(void *root, char *name) {
   return sym;
 }
 
+// {{{ constructors: list
+
+// cell/list constructor
+static Val *cons(void *root, Val **car, Val **cdr) {
+  Val *cell = alloc(root, TCELL, sizeof(Val *) * 2);
+  cell->car = *car;
+  cell->cdr = *cdr;
+  return cell;
+}
+
+// Returns the length of the given list. -1 if it's not a proper list.
+static int length(Val *list) {
+  int len = 0;
+  for (; list->type == TCELL; list = list->cdr)
+    len++;
+  return list == Nil ? len : -1;
+}
+
+// Destructively reverses the given list.
+static Val *reverse(Val *p) {
+  Val *ret = Nil;
+  while (p != Nil) {
+    Val *head = p;
+    p = p->cdr;
+    head->cdr = ret;
+    ret = head;
+  }
+  return ret;
+}
+
+// Returns ((x . y) . a)
+static Val *acons(void *root, Val **x, Val **y, Val **a) {
+  DEFINE1(root, cell);
+  *cell = cons(root, x, y);
+  return cons(root, cell, a);
+}
+
+// }}}
+
+// {{{ constructors: obj
+
+static void obj_set(void *, Val **, Val **, Val **);
+
 static Val *make_obj(void *root, Val **proto) {
   Val *r = alloc(root, TOBJ, sizeof(Val *) * (OBJ_HM_SIZE + 1));
   r->proto = *proto;
@@ -480,6 +504,17 @@ static Val *make_obj(void *root, Val **proto) {
     r->props[i] = Nil;
   }
   return r;
+}
+
+static Val *make_obj_alist(void *root, Val **proto, Val **props) {
+  DEFINE3(root, obj, key, val);
+  *obj = make_obj(root, proto);
+  for (Val *pair = *props; pair != Nil; pair = pair->cdr) {
+    *key = pair->car->car;
+    *val = pair->car->cdr;
+    obj_set(root, obj, key, val);
+  }
+  return *obj;
 }
 
 static size_t obj_hash(Val *key) {
@@ -549,6 +584,18 @@ static Val *obj_get(Val *obj, Val *k) {
   return _obj_get(obj, obj_hash(k), k);
 }
 
+// Gets the alist cell for k in obj or any of it's prototypes
+static Val *obj_find(Val *obj, Val *k) {
+  size_t h = obj_hash(k);
+  for (Val *o = obj; o != Nil; o = o->proto) {
+    Val *v = _obj_get(o, h, k);
+    if (v != NULL) {
+      return v;
+    }
+  }
+  return NULL;
+}
+
 // Set object key to value
 static void obj_set(void *root, Val **obj, Val **key, Val **val) {
   DEFINE2(root, list, pair);
@@ -580,6 +627,8 @@ static void obj_del(Val *obj, Val *k) {
   }
 }
 
+// }}}
+
 static Val *make_primitive(void *root, Primitive *fn) {
   Val *r = alloc(root, TPRI, sizeof(Primitive *));
   r->priv = fn;
@@ -594,20 +643,6 @@ static Val *make_function(void *root, Val **env, int type, Val **params,
   r->body = *body;
   r->env = *env;
   return r;
-}
-
-struct Val *make_env(void *root, Val **vars, Val **up) {
-  Val *r = alloc(root, TENV, sizeof(Val *) * 2);
-  r->vars = *vars;
-  r->up = *up;
-  return r;
-}
-
-// Returns ((x . y) . a)
-static Val *acons(void *root, Val **x, Val **y, Val **a) {
-  DEFINE1(root, cell);
-  *cell = cons(root, x, y);
-  return cons(root, cell, a);
 }
 
 // }}}
@@ -661,7 +696,7 @@ static char *pr_str(void *root, Val *obj) {
     len += sprintf(&buf[len], "\"");
     return buf;
   case TOBJ:
-    val = obj_get(obj, intern(root, "*object-name*"));
+    val = obj_find(obj, intern(root, "*object-name*"));
     if (val != NULL && val->cdr->type == TSTR) {
       len += sprintf(&buf[len], "<object %s %p>", val->cdr->strv, obj);
     } else {
@@ -693,26 +728,6 @@ static char *pr_str(void *root, Val *obj) {
     // TODO append obj->type
     error("Bug: print: Unknown tag type");
   }
-}
-
-// Returns the length of the given list. -1 if it's not a proper list.
-static int length(Val *list) {
-  int len = 0;
-  for (; list->type == TCELL; list = list->cdr)
-    len++;
-  return list == Nil ? len : -1;
-}
-
-// Destructively reverses the given list.
-static Val *reverse(Val *p) {
-  Val *ret = Nil;
-  while (p != Nil) {
-    Val *head = p;
-    p = p->cdr;
-    head->cdr = ret;
-    ret = head;
-  }
-  return ret;
 }
 
 int setnonblock(int fd) {
@@ -910,7 +925,7 @@ static Val *read_string(Reader *r, void *root) {
 
   // create str
   DEFINE1(root, tmp);
-  *tmp = make_string(root, unescaped_buf);
+  *tmp = make_str(root, unescaped_buf);
   return *tmp;
 }
 
@@ -1015,11 +1030,14 @@ static Val *reader_expr(Reader *r, void *root) {
 
 static Val *eval(void *root, Val **env, Val **obj);
 
-static void add_variable(void *root, Val **env, Val **sym, Val **val) {
-  DEFINE2(root, vars, tmp);
-  *vars = (*env)->vars;
-  *tmp = acons(root, sym, val, vars);
-  (*env)->vars = *tmp;
+// Adds a variable to the current env level
+static void env_set(void *root, Val **env, Val **sym, Val **val) {
+  obj_set(root, env, sym, val);
+}
+
+// Searches for a variable by symbol. Returns null if not found.
+static Val *env_get(Val **env, Val *sym) {
+  return obj_find(*env, sym);
 }
 
 // Returns a newly created environment frame.
@@ -1041,7 +1059,7 @@ static Val *push_env(void *root, Val **env, Val **vars, Val **vals) {
     if (*vars != Nil)
       *map = acons(root, vars, vals, map);
   }
-  return make_env(root, map, env);
+  return make_obj_alist(root, env, map);
 }
 
 // Evaluates the list elements from head and returns the last return value.
@@ -1099,18 +1117,6 @@ static Val *apply(void *root, Val **env, Val **fn, Val **args, bool do_eval) {
   error("apply: not supported");
 }
 
-// Searches for a variable by symbol. Returns null if not found.
-static Val *find(Val **env, Val *sym) {
-  for (Val *p = *env; p != Nil; p = p->up) {
-    for (Val *cell = p->vars; cell != Nil; cell = cell->cdr) {
-      Val *bind = cell->car;
-      if (sym == bind->car)
-        return bind;
-    }
-  }
-  return NULL;
-}
-
 // Expands the given macro application form.
 static Val *macroexpand(void *root, Val **env, Val **val) {
   if ((*val)->type != TCELL ||
@@ -1121,7 +1127,7 @@ static Val *macroexpand(void *root, Val **env, Val **val) {
   if ((*val)->car->type == TMAC) {
     *macro = (*val)->car;
   } else {
-    *bind = find(env, (*val)->car);
+    *bind = env_get(env, (*val)->car);
     if (!*bind || (*bind)->cdr->type != TMAC)
       return *val;
     *macro = (*bind)->cdr;
@@ -1145,8 +1151,11 @@ static Val *eval(void *root, Val **env, Val **obj) {
     return *obj;
   case TSYM: {
     // Variable
-    Val *bind = find(env, *obj);
-    if (!bind) {
+    if (*obj == intern(root, "*env*")) {
+      return *env;
+    }
+    Val *bind = env_get(env, *obj);
+    if (bind == NULL) {
       // TODO clean up string messing
       char *err_text = "eval: undefined symbol: ";
       char *err_val = (*obj)->symv;
@@ -1247,7 +1256,7 @@ static Val *prim_def(void *root, Val **env, Val **list) {
   *sym = (*list)->car;
   *value = (*list)->cdr->car;
   *value = eval(root, env, value);
-  add_variable(root, env, sym, value);
+  env_set(root, env, sym, value);
   return *value;
 }
 
@@ -1258,10 +1267,10 @@ static Val *prim_def_global(void *root, Val **env, Val **list) {
   *sym = (*list)->car;
   *value = (*list)->cdr->car;
   *value = eval(root, env, value);
-  while ((*env)->up != Nil) {
-    *env = (*env)->up;
+  while ((*env)->proto != Nil) {
+    *env = (*env)->proto;
   }
-  add_variable(root, env, sym, value);
+  env_set(root, env, sym, value);
   return *value;
 }
 
@@ -1292,7 +1301,7 @@ static Val *prim_set(void *root, Val **env, Val **list) {
 
   if ((*list)->car->type != TSYM)
     error("Malformed set");
-  *key = find(env, (*list)->car);
+  *key = env_get(env, (*list)->car);
   if (!*key) {
     // TODO append (*list)->car->symv
     error("Unbound variable");
@@ -1308,7 +1317,7 @@ static Val *prim_pr_str(void *root, Val **env, Val **list) {
   DEFINE2(root, tmp, s);
   *tmp = (*list)->car;
   char *str = pr_str(root, eval(root, env, tmp));
-  *s = make_string(root, str);
+  *s = make_str(root, str);
   return *s;
 }
 
@@ -1531,16 +1540,11 @@ static Val *prim_obj(void *root, Val **env, Val **list) {
     }
   }
 
-  DEFINE5(root, obj, key, val, proto, props);
+  DEFINE3(root, obj, proto, props);
   *proto = args->car;
   *props = args->cdr->car;
 
-  *obj = make_obj(root, proto);
-  for (Val *pair = *props; pair != Nil; pair = pair->cdr) {
-    *key = pair->car->car;
-    *val = pair->car->cdr;
-    obj_set(root, obj, key, val);
-  }
+  *obj = make_obj_alist(root, proto, props);
   return *obj;
 }
 
@@ -1556,7 +1560,7 @@ static Val *prim_obj_get(void *root, Val **env, Val **list) {
   DEFINE3(root, o, k, value);
   *o = args->car;
   *k = args->cdr->car;
-  *value = obj_get(*o, *k);
+  *value = obj_find(*o, *k);
   if (*value == NULL) {
     // TODO append args->cdr->car->symv
     error("obj-get: unbound symbol");
@@ -1571,7 +1575,7 @@ static Val *prim_obj_set(void *root, Val **env, Val **list) {
   Val *args = eval_list(root, env, list);
   if (args->car->type != TOBJ)
     error("obj-set: expected 1st argument to be object");
-  if (obj_valid_key(args->cdr->car))
+  if (!obj_valid_key(args->cdr->car))
     error("obj-set: expected 2nd argument to be valid object key");
 
   DEFINE3(root, obj, key, val);
@@ -1703,7 +1707,7 @@ static Val *prim_str(void *root, Val **env, Val **list) {
   }
 
   ret[len + 1] = '\0';
-  return make_string(root, &ret[0]);
+  return make_str(root, &ret[0]);
 }
 
 // (str-len str)
@@ -1818,7 +1822,7 @@ static Val *prim_trap_error(void *root, Val **env, Val **list) {
   }
   int trapped = setjmp(error_jmp_env[error_depth++]);
   if (trapped != 0) {
-    *call = make_string(root, error_value);
+    *call = make_str(root, error_value);
     free(error_value);
 
     *call = cons(root, call, &Nil);
@@ -1873,7 +1877,7 @@ static Val *prim_read(void *root, Val **env, Val **list) {
   if (read(fd, &str, len) < 0)
     error("read: error");
 
-  return make_string(root, str);
+  return make_str(root, str);
 }
 
 // (seconds)
@@ -1973,7 +1977,7 @@ static Val *prim_getenv(void *root, Val **env, Val **list) {
   if (val == NULL) {
     return Nil;
   }
-  return make_string(root, val);
+  return make_str(root, val);
 }
 
 // }}}
@@ -2295,7 +2299,7 @@ static Val *prim_linenoise(void *root, Val **env, Val **list) {
   if (line == NULL) {
     return Nil;
   }
-  *str = make_string(root, line);
+  *str = make_str(root, line);
   free(line);
   return *str;
 }
@@ -2345,26 +2349,26 @@ static void add_primitive(void *root, Val **env, char *name, Primitive *fn) {
   DEFINE2(root, sym, prim);
   *sym = intern(root, name);
   *prim = make_primitive(root, fn);
-  add_variable(root, env, sym, prim);
+  env_set(root, env, sym, prim);
 }
 
 static void define_constants(void *root, Val **env) {
   DEFINE2(root, sym, val);
 
   *sym = intern(root, "t");
-  add_variable(root, env, sym, &True);
+  env_set(root, env, sym, &True);
 
   *sym = intern(root, "nil");
-  add_variable(root, env, sym, &Nil);
+  env_set(root, env, sym, &Nil);
 
   *sym = intern(root, "*system-version*");
-  *val = make_string(root, (char *)VERSION);
-  add_variable(root, env, sym, val);
+  *val = make_str(root, (char *)VERSION);
+  env_set(root, env, sym, val);
 
 #define defint(root, k, v)                                                     \
   *sym = intern(root, k);                                                      \
   *val = make_int(root, v);                                                    \
-  add_variable(root, env, sym, val);
+  env_set(root, env, sym, val);
 
   // Net
   defint(root, "PF_INET", PF_INET);
@@ -2488,7 +2492,7 @@ static void shi_init_cb(struct ev_loop *loop, ev_timer *w, int revents) {
 
   // Read and evaluate prelude
   *read_sexp_sym = intern(root, "read-sexp");
-  *prelude = make_string(root, (char *)prelude_contents);
+  *prelude = make_str(root, (char *)prelude_contents);
   *prelude = cons(root, prelude, &Nil);
   *prelude = cons(root, read_sexp_sym, prelude);
   *prelude = eval(root, env, prelude);
@@ -2514,7 +2518,7 @@ int main(int argc, char **argv) {
   symbols = Nil;
   void *root = NULL;
   DEFINE4(root, env, sh_args_sym, sh_args, sh_arg);
-  *env = make_env(root, &Nil, &Nil);
+  *env = make_obj_alist(root, &Nil, &Nil);
   define_constants(root, env);
   define_primitives(root, env);
 
@@ -2522,11 +2526,11 @@ int main(int argc, char **argv) {
   *sh_args_sym = intern(root, "*args*");
   *sh_args = Nil;
   for (int i = 0; i < argc; i++) {
-    *sh_arg = make_string(root, argv[i]);
+    *sh_arg = make_str(root, argv[i]);
     *sh_args = cons(root, sh_arg, sh_args);
   }
   *sh_args = reverse(*sh_args);
-  add_variable(root, env, sh_args_sym, sh_args);
+  env_set(root, env, sh_args_sym, sh_args);
 
   // Start event loop
   ev_timer *shi_init_w = malloc(sizeof(ev_timer));
