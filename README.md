@@ -6,17 +6,18 @@
 
 - Async I/O
 - Async Net/Socket
+- Timeout
 - Module System
 
 ### Other
 
 - prim: str-part
-- prim: read-sexp
 - http static files
 - http router
 - http responses
 - json
 - regexp
+- promise
 
 ### Stdlib
 
