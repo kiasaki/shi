@@ -664,7 +664,7 @@
 (defmacro def-export (k v)
   `(do
     (def k v)
-    (def-global ,(sym (str (sym->str *module*) "/" (sym->str k))) v)))
+    (def-global ,(sym (str (sym->str *module*) "/" (sym->str k))) k)))
 
 (module global)
 
@@ -706,8 +706,8 @@
 
 (defn shi-main ()
   (cond (>= (length *args*) 2)
-          (eval (expand-toplevel (read-sexp (read-all (second *args*)))))
+          (eval (read-sexp (read-all (second *args*))))
         (not (isatty *stdin*))
-          (eval (expand-toplevel (read-sexp (read-all-from *stdin*))))
+          (eval (read-sexp (read-all-from *stdin*)))
         else
           (shi-repl)))

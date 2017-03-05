@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
+#include <termios.h>
 #include <setjmp.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -31,6 +32,8 @@ static const char *VERSION = "0.1.0";
 
 // {{{ error
 
+void term_disable_raw_mode();
+
 // Globals
 #define MAX_ERROR_DEPTH 25
 static int error_depth = 0;
@@ -45,6 +48,7 @@ static __attribute((noreturn)) void error(char *error_v) {
     error_depth--;
     longjmp(error_jmp_env[error_depth], 1);
   }
+  term_disable_raw_mode();
   printf("unhandled error: %s\n", error_value);
   exit(1);
 }
@@ -661,10 +665,11 @@ static Val *intern(void *root, char *name) {
   return *sym;
 }
 
-#define PP_MAX_LEN 4096
+#define PP_MAX_LEN 16384
 static char *pr_str(void *root, Val *obj) {
 
-  char *buf = malloc(sizeof(char) * 4096);
+  char *buf = malloc(sizeof(char) * PP_MAX_LEN);
+  bzero(buf, sizeof(char) * PP_MAX_LEN);
   char *s;
   Val *val;
   int len = 0;
@@ -1352,6 +1357,9 @@ static Val *prim_eq(void *root, Val **env, Val **list) {
   if (length(*list) != 2)
     error("eq?: needs exactly 2 arguments");
   Val *values = eval_list(root, env, list);
+  if (obj_key_eq(values->car, values->cdr->car)) {
+    return True;
+  }
   return values->car == values->cdr->car ? True : Nil;
 }
 
@@ -2296,6 +2304,68 @@ static Val *prim_ev_stop(void *root, Val **env, Val **list) {
 
 // }}}
 
+// {{{ primitives: termios
+
+static bool term_in_raw_mode = false;
+static struct termios term_orig_attrs;
+
+void term_disable_raw_mode() {
+  if (term_in_raw_mode) {
+    tcsetattr(STDIN_FILENO,TCSAFLUSH,&term_orig_attrs);
+    term_in_raw_mode = false;
+  }
+}
+
+int term_enable_raw_mode() {
+    struct termios raw;
+
+    if (term_in_raw_mode) return 0;
+    if (!isatty(STDIN_FILENO)) goto fatal;
+    atexit(term_disable_raw_mode);
+    if (tcgetattr(STDIN_FILENO,&term_orig_attrs) == -1) goto fatal;
+
+    raw = term_orig_attrs;
+    // From kilo:
+    /* input modes: no break, no CR to NL, no parity check, no strip char,
+     * no start/stop output control. */
+    raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+    /* output modes - disable post processing */
+    raw.c_oflag &= ~(OPOST);
+    /* control modes - set 8 bit chars */
+    raw.c_cflag |= (CS8);
+    /* local modes - choing off, canonical off, no extended functions,
+     * no signal chars (^Z,^C) */
+    raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+    /* control chars - set return condition: min number of bytes and timer. */
+    raw.c_cc[VMIN] = 0; /* Return each byte, or zero for timeout. */
+    raw.c_cc[VTIME] = 1; /* 100 ms timeout (unit is tens of second). */
+
+    if (tcsetattr(STDIN_FILENO,TCSAFLUSH,&raw) < 0) goto fatal;
+    term_in_raw_mode = true;
+    return 0;
+
+fatal:
+    errno = ENOTTY;
+    return -1;
+}
+
+static Val *prim_term_raw(void *root, Val **env, Val **list) {
+  if (length(*list) != 1)
+    error("term_raw: not given exactly 1 argument");
+  DEFINE1(root, values);
+  *values = eval_list(root, env, list);
+  if ((*values)->car != Nil) {
+    if (term_enable_raw_mode() < 0) {
+      error("term_raw: error enabling raw mode");
+    }
+  } else {
+    term_disable_raw_mode();
+  }
+  return Nil;
+}
+
+// }}}
+
 // {{{ primitives: linenoise
 
 // (linenoise prompt)
@@ -2470,6 +2540,9 @@ static void define_primitives(void *root, Val **env) {
   // Ev
   add_primitive(root, env, "ev-start", prim_ev_start);
   add_primitive(root, env, "ev-stop", prim_ev_stop);
+
+  // Term
+  add_primitive(root, env, "term-raw", prim_term_raw);
 
   // Linenoise
   add_primitive(root, env, "linenoise", prim_linenoise);

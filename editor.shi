@@ -1,0 +1,118 @@
+; A simple editor
+
+; {{{ constants
+
+(def K_CTRL_C "\u0003") ; 3 - Ctrl-c
+(def K_CTRL_D "\u0004") ; 4 - Ctrl-d
+(def K_CTRL_F "\u0006") ; 6 - Ctrl-f
+(def K_CTRL_H "\u0008") ; 8 - Ctrl-h
+(def K_TAB "\u0009") ; 9 - Tab
+(def K_CTRL_L "\u000C") ; 12 - Ctrl-l
+(def K_ENTER "\u000D")  ; 13 - Enter
+(def K_CTRL_Q "\u0011") ; 17 - Ctrl-q
+(def K_CTRL_S "\u0013") ; 19 - Ctrl-s
+(def K_CTRL_U "\u0015") ; 21 - Ctrl-u
+(def K_ESC "\u001B") ; 27 - Escape
+(def K_BACKSPACE "\u007F") ; 127 - Backspace
+
+(def K_ARROW_UP "\u03E8") ; 1000
+(def K_ARROW_DOWN "\u03E9") ; 1001
+(def K_ARROW_RIGHT "\u03EA") ; 1002
+(def K_ARROW_LEFT "\u03EB") ; 1003
+(def K_HOME "\u03EC") ; 1004
+(def K_END "\u03ED") ; 1005
+
+; }}}
+
+; {{{ state
+
+(def *running* t)
+
+(def k "-")
+
+; }}}
+
+; {{{ render
+
+(defn render ()
+  (def buf "")
+  (set buf (str buf "\x1b[H")) ; Go home
+
+  ;(set buf (str buf (getenv "ROWS") "\x1b[0K\r\n"))
+  ;(set buf (str buf (getenv "COLS") "\x1b[0K\r\n"))
+
+  (set buf (str buf k "\x1b[0K\r\n"))
+
+  (set buf (str buf "~\x1b[0K\r\n")) ; Empty line
+  (set buf (str buf "~\x1b[0K\r\n")) ; Empty line
+  (set buf (str buf "~\x1b[0K\r\n")) ; Empty line
+
+  ;(set buf (str buf "\x1b[39m")) ; Reset default fg
+  ;(set buf (str buf "\x1b[0K")) ; Clear line to right
+  ;(set buf (str buf "\r\n")) ; New line
+
+  (write *out* buf))
+
+; }}}
+
+; {{{ input
+
+(defn read-key ()
+  ; Read until user types something
+  (def c "")
+  (while (eq? (str-len c) 0)
+    (set c (read *in* 1)))
+
+  (if (not (eq? c K_ESC))
+    c ; Normal char
+    (read-esc))) ; Handle ESC
+
+(defn read-esc ()
+  (def seq (read *in* 2))
+
+  (if (eq? (str-len seq) 0) ; Probably just ESC then
+    K_ESC
+    (cond
+      (eq? seq "0H") K_HOME
+      (eq? seq "0F") K_END
+      (eq? seq "[A") K_ARROW_UP
+      (eq? seq "[B") K_ARROW_DOWN
+      (eq? seq "[C") K_ARROW_RIGHT
+      (eq? seq "[D") K_ARROW_LEFT
+      (eq? seq "[H") K_HOME
+      (eq? seq "[F") K_END)))
+
+(defn handle-key ()
+  (set k (read-key))
+  (cond
+    (eq? k K_CTRL_C) (cmd-warn-ctrl-c)
+    (eq? k K_CTRL_Q) (cmd-exit)))
+
+; }}}
+
+; {{{ commands
+
+(defn cmd-warn-ctrl-c ()
+  nil)
+
+(defn cmd-exit ()
+  (set *running* nil))
+
+; }}}
+
+; {{{ main
+
+(defn main ()
+  (term-raw t)
+  (write *out* "\x1b[?25l") ; Hide cursor
+
+  (while *running*
+    (render)
+    (handle-key))
+
+  (write *out* "\x1b[?25h") ; Show cursor
+  (term-raw nil))
+
+(main)
+
+; }}}
